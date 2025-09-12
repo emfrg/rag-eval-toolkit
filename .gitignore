@@ -1,0 +1,43 @@
+# System Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# Hidden files
+.*.swp
+.*.swo
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# Dependencies
+node_modules/
+venv/
+env/
+*.pyc
+__pycache__/
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+logs/
+
+# Build
+dist/
+build/
+*.egg-info/
