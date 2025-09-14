@@ -4,6 +4,8 @@ data/
 datasets_local/
 output/
 
+lightrag_store
+
 
 # System Files
 .DS_Store
