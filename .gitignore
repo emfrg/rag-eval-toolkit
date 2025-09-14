@@ -2,6 +2,7 @@
 rag_cache/
 data/
 datasets_local/
+output/
 
 
 # System Files
