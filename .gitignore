@@ -3,8 +3,12 @@ rag_cache/
 data/
 datasets_local/
 output/
+results/
+data_BACKUPS/
 
 lightrag_store
+lightrag.log
+lightrag.log.*
 
 
 # System Files

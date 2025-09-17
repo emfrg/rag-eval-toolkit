@@ -5,10 +5,31 @@ from tqdm import tqdm
 from lightrag import LightRAG, QueryParam
 from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
 from lightrag.kg.shared_storage import initialize_pipeline_status
-from lightrag.utils import setup_logger
+from lightrag.utils import setup_logger, Tokenizer  # Tokenizer is here
+
+from dotenv import load_dotenv
+import tiktoken  # needed for encode patch
+
+# --- Monkey-patch Tokenizer.encode to allow special tokens ---
+_orig_encode = Tokenizer.encode
+
+
+def _encode_allow_special(self, content: str):
+    return self.tokenizer.encode(
+        content,
+        disallowed_special=(),  # treat all specials as normal text
+        # or: allowed_special={'<|endoftext|>', '<|im_start|>', '<|im_end|>'}
+    )
+
+
+Tokenizer.encode = _encode_allow_special
+# ----------------------------------------------------------------
+
+load_dotenv()
+
 
 # ---------- config ----------
-SAVE_DIR = Path("datasets_local/20250913_120022")  # or auto-pick latest
+SAVE_DIR = Path("datasets_local/20250914_145157")  # or auto-pick latest
 CORPUS = SAVE_DIR / "initial_corpus.jsonl"  # your saved file
 WORKING_DIR = "lightrag_store"  # LightRAG storage folder
 MAX_PARALLEL_INSERT = 4  # tune 2–10 per docs
@@ -55,16 +76,24 @@ async def insert_all(rag: LightRAG, records):
 
 
 async def main():
-    rag = await init_rag()
-    print("Reading corpus…")
-    records = list(iter_jsonl(CORPUS))
-    print(f"Inserting {len(records)} docs…")
-    await insert_all(rag, records)
+    # rag = await init_rag()
+    # print("Reading corpus…")
+    # records = list(iter_jsonl(CORPUS))
+    # print(f"Inserting {len(records)} docs…")
+    # await insert_all(rag, records)
 
-    # (Optional) quick sanity query
+    # # (Optional) quick sanity query
+    # ans = await rag.aquery(
+    #     "What are the main topics covered in this corpus?",
+    #     param=QueryParam(mode="hybrid"),  # "local" | "global" | "hybrid" | "mix"
+    # )
+    # print(ans)
+
+    rag = await init_rag()
+
     ans = await rag.aquery(
-        "What are the main topics covered in this corpus?",
-        param=QueryParam(mode="hybrid"),  # "local" | "global" | "hybrid" | "mix"
+        "What is this corpus about?",  # "What are the main topics covered in this corpus?",
+        param=QueryParam(mode="hybrid"),
     )
     print(ans)
 

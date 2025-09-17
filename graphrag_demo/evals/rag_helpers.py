@@ -4,6 +4,7 @@ from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores.utils import DistanceStrategy
 from langchain.docstore.document import Document as LangchainDocument
 from langchain.schema import SystemMessage, HumanMessage
+from langchain.prompts.chat import ChatPromptTemplate
 from typing import List, Optional, Tuple
 import tiktoken
 import os
@@ -224,6 +225,123 @@ def run_rag_tests(
 
         with open(output_file, "w") as f:
             json.dump(outputs, f)
+
+
+def evaluate_answers(
+    answer_path: str,
+    eval_chat_model,
+    evaluator_name: str,
+    evaluation_prompt_template: ChatPromptTemplate,
+) -> None:
+    """Evaluates generated answers. Modifies the given answer file in place for better checkpointing."""
+    import json
+
+    answers = []
+    if os.path.isfile(answer_path):
+        answers = json.load(open(answer_path, "r"))
+
+    for experiment in tqdm(answers):
+        if f"eval_score_{evaluator_name}" in experiment:
+            continue
+
+        eval_prompt = evaluation_prompt_template.format_messages(
+            instruction=experiment["question"],
+            response=experiment["generated_answer"],
+            reference_answer=experiment["true_answer"],
+        )
+        eval_result = eval_chat_model.invoke(eval_prompt)
+        feedback, score = [
+            item.strip() for item in eval_result.content.split("[RESULT]")
+        ]
+        experiment[f"eval_score_{evaluator_name}"] = score
+        experiment[f"eval_feedback_{evaluator_name}"] = feedback
+
+        with open(answer_path, "w") as f:
+            json.dump(answers, f)
+
+
+# --- LightRAG eval adapter ----------------------------------------------------
+import os, asyncio, time
+from typing import Optional, Dict, Any
+from lightrag import LightRAG, QueryParam
+from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
+from lightrag.kg.shared_storage import initialize_pipeline_status
+
+_LIGHTRAG_SINGLETON: Optional[LightRAG] = None
+_LIGHTRAG_WORKDIR = "./lightrag_store"  # keep separate from other pipelines
+
+
+async def init_lightrag() -> LightRAG:
+    """Create/initialize a singleton LightRAG instance (safe to call many times)."""
+    global _LIGHTRAG_SINGLETON
+    if _LIGHTRAG_SINGLETON is not None:
+        return _LIGHTRAG_SINGLETON
+
+    rag = LightRAG(
+        working_dir=_LIGHTRAG_WORKDIR,
+        embedding_func=openai_embed,  # use SAME at query as at index
+        llm_model_func=gpt_4o_mini_complete,
+    )
+    await rag.initialize_storages()  # REQUIRED init
+    await initialize_pipeline_status()  # REQUIRED init
+    _LIGHTRAG_SINGLETON = rag
+    return rag
+
+
+async def lightrag_answer(
+    question: str,
+    *,
+    mode: str = "hybrid",  # "naive" | "local" | "global" | "hybrid" | "mix"
+) -> Dict[str, Any]:
+    """Query LightRAG and return a normalized result for your side-by-side evals."""
+    rag = await init_lightrag()
+
+    # 1) Retrieve context (as a single formatted string)
+    t0 = time.perf_counter()
+    ctx_str = await rag.aquery(
+        question, param=QueryParam(mode=mode, only_need_context=True)
+    )
+    t_ctx = (time.perf_counter() - t0) * 1000.0
+
+    # 2) Generate final answer
+    t1 = time.perf_counter()
+    answer = await rag.aquery(
+        question, param=QueryParam(mode=mode)  # normal generation
+    )
+    t_ans = (time.perf_counter() - t1) * 1000.0
+
+    return {
+        "provider": "LightRAG",
+        "mode": mode,
+        "question": question,
+        "answer": answer,  # str
+        "contexts": [ctx_str] if isinstance(ctx_str, str) else ctx_str,
+        "latency_ms": {
+            "retrieve": round(t_ctx, 2),
+            "generate": round(t_ans, 2),
+            "total": round(t_ctx + t_ans, 2),
+        },
+        # room for extras your harness might already capture:
+        "metadata": {
+            "workdir": _LIGHTRAG_WORKDIR,
+            # add run id, embedding model id, etc. if you log them
+        },
+    }
+
+
+def lightrag_answer_sync(question: str, **kw) -> Dict[str, Any]:
+    """Sync wrapper if your harness is not async."""
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = None
+    if loop and loop.is_running():
+        # If you're inside an event loop, caller should await lightrag_answer
+        raise RuntimeError("Call lightrag_answer() with await inside async code.")
+    return asyncio.run(lightrag_answer(question, **kw))
+
+
+# -----------------------------------------------------------------------------
 
 
 # Prompts
