@@ -1,3 +1,4 @@
+# rag_helpers
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -262,29 +263,75 @@ def evaluate_answers(
 
 # --- LightRAG eval adapter ----------------------------------------------------
 import os, asyncio, time
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Tuple
 from lightrag import LightRAG, QueryParam
-from lightrag.llm.openai import gpt_4o_mini_complete, openai_embed
+from lightrag.llm.openai import gpt_4o_mini_complete, gpt_4o_complete, openai_embed
 from lightrag.kg.shared_storage import initialize_pipeline_status
+from lightrag.utils import Tokenizer
 
-_LIGHTRAG_SINGLETON: Optional[LightRAG] = None
+# --- Monkey-patch Tokenizer.encode to allow special tokens ---
+_orig_encode = Tokenizer.encode
+
+
+def _encode_allow_special(self, content: str):
+    return self.tokenizer.encode(
+        content,
+        disallowed_special=(),  # treat all specials as normal text
+    )
+
+
+Tokenizer.encode = _encode_allow_special
+# ----------------------------------------------------------------
+
+_LIGHTRAG_INSTANCES: Dict[str, LightRAG] = {}  # Cache instances by config
 _LIGHTRAG_WORKDIR = "./lightrag_store"  # keep separate from other pipelines
 
 
-async def init_lightrag() -> LightRAG:
-    """Create/initialize a singleton LightRAG instance (safe to call many times)."""
-    global _LIGHTRAG_SINGLETON
-    if _LIGHTRAG_SINGLETON is not None:
-        return _LIGHTRAG_SINGLETON
+async def init_lightrag(llm_model: str = "gpt-4o-mini", reranker=None) -> LightRAG:
+    """Create/initialize a LightRAG instance with specified LLM and optional reranker."""
+    global _LIGHTRAG_INSTANCES
+
+    # Create cache key based on model and reranker presence
+    cache_key = f"{llm_model}_{'with_rerank' if reranker else 'no_rerank'}"
+
+    # Return cached instance if available
+    if cache_key in _LIGHTRAG_INSTANCES:
+        return _LIGHTRAG_INSTANCES[cache_key]
+
+    # Select LLM function based on model name
+    if llm_model == "gpt-4o":
+        llm_func = gpt_4o_complete
+    else:  # default to gpt-4o-mini
+        llm_func = gpt_4o_mini_complete
+
+    # Create rerank function wrapper if reranker is provided
+    rerank_func = None
+    if reranker is not None:
+
+        def rerank_func(query: str, documents: List[str], top_k: int = 20) -> List[str]:
+            """Wrapper to adapt external reranker to LightRAG format"""
+            if not documents:
+                return []
+
+            # Use the external reranker (e.g., RAGPretrainedModel)
+            # The reranker.rerank returns list of dicts with 'content' key
+            reranked = reranker.rerank(query, documents, k=min(top_k, len(documents)))
+
+            # LightRAG expects a list of reranked document strings
+            return [
+                doc["content"] if isinstance(doc, dict) else doc for doc in reranked
+            ]
 
     rag = LightRAG(
         working_dir=_LIGHTRAG_WORKDIR,
-        embedding_func=openai_embed,  # use SAME at query as at index
-        llm_model_func=gpt_4o_mini_complete,
+        embedding_func=openai_embed,
+        llm_model_func=llm_func,
+        rerank_model_func=rerank_func,
     )
-    await rag.initialize_storages()  # REQUIRED init
-    await initialize_pipeline_status()  # REQUIRED init
-    _LIGHTRAG_SINGLETON = rag
+    await rag.initialize_storages()
+    await initialize_pipeline_status()
+
+    _LIGHTRAG_INSTANCES[cache_key] = rag
     return rag
 
 
@@ -292,22 +339,40 @@ async def lightrag_answer(
     question: str,
     *,
     mode: str = "hybrid",  # "naive" | "local" | "global" | "hybrid" | "mix"
+    llm_model: str = "gpt-4o-mini",
+    reranker=None,
+    num_docs_final: int = 20,  # LightRAG's default
 ) -> Dict[str, Any]:
-    """Query LightRAG and return a normalized result for your side-by-side evals."""
-    rag = await init_lightrag()
+    """Query LightRAG with specified model and optional reranking."""
+    rag = await init_lightrag(llm_model=llm_model, reranker=reranker)
+
+    # Use "mix" mode when reranker is available (as recommended by LightRAG docs)
+    if reranker and mode == "hybrid":
+        mode = "mix"
+
+    # Configure query params
+    query_params = QueryParam(
+        mode=mode,
+        top_k=num_docs_final,
+        enable_rerank=reranker is not None,  # Enable internal reranking when available
+    )
 
     # 1) Retrieve context (as a single formatted string)
     t0 = time.perf_counter()
     ctx_str = await rag.aquery(
-        question, param=QueryParam(mode=mode, only_need_context=True)
+        question,
+        param=QueryParam(
+            mode=mode,
+            only_need_context=True,
+            enable_rerank=reranker is not None,
+            top_k=num_docs_final,
+        ),
     )
     t_ctx = (time.perf_counter() - t0) * 1000.0
 
     # 2) Generate final answer
     t1 = time.perf_counter()
-    answer = await rag.aquery(
-        question, param=QueryParam(mode=mode)  # normal generation
-    )
+    answer = await rag.aquery(question, param=query_params)
     t_ans = (time.perf_counter() - t1) * 1000.0
 
     return {
@@ -321,27 +386,86 @@ async def lightrag_answer(
             "generate": round(t_ans, 2),
             "total": round(t_ctx + t_ans, 2),
         },
-        # room for extras your harness might already capture:
         "metadata": {
             "workdir": _LIGHTRAG_WORKDIR,
-            # add run id, embedding model id, etc. if you log them
+            "llm_model": llm_model,
+            "reranker_used": reranker is not None,
         },
     }
 
 
-def lightrag_answer_sync(question: str, **kw) -> Dict[str, Any]:
-    """Sync wrapper if your harness is not async."""
+def lightrag_answer_sync(
+    question: str,
+    llm_model: str = "gpt-4o-mini",
+    reranker=None,
+    num_docs_final: int = 20,
+    **kw,
+) -> Dict[str, Any]:
+    """Sync wrapper for LightRAG queries."""
+    global _LIGHTRAG_INSTANCES
+    # Clear instances to force fresh initialization each run (avoids event loop issues)
+    _LIGHTRAG_INSTANCES.clear()
+
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:
         loop = None
     if loop and loop.is_running():
-        # If you're inside an event loop, caller should await lightrag_answer
         raise RuntimeError("Call lightrag_answer() with await inside async code.")
-    return asyncio.run(lightrag_answer(question, **kw))
+    return asyncio.run(
+        lightrag_answer(
+            question,
+            llm_model=llm_model,
+            reranker=reranker,
+            num_docs_final=num_docs_final,
+            **kw,
+        )
+    )
 
 
-# -----------------------------------------------------------------------------
+def answer_with_graphrag(
+    question: str,
+    llm,  # The LLM instance from READER_MODELS (same as classic RAG)
+    knowledge_index,  # Just {"mode": "hybrid"} or other mode
+    reranker=None,  # Pass to LightRAG for INTERNAL reranking
+    num_retrieved_docs: int = 30,  # Ignored
+    num_docs_final: int = 7,
+) -> Tuple[str, List[str]]:
+    """
+    GraphRAG wrapper that matches answer_with_rag signature.
+    Uses same LLM and reranker as classic RAG for fair comparison.
+    """
+    # Extract mode
+    mode = "hybrid"
+    if isinstance(knowledge_index, dict) and "mode" in knowledge_index:
+        mode = knowledge_index["mode"]
+
+    # Get model name from the llm instance
+    llm_model = "gpt-4o-mini"
+    if llm and hasattr(llm, "model_name"):
+        llm_model = llm.model_name
+
+    # Use LightRAG with the SAME model and reranker as classic RAG
+    result = lightrag_answer_sync(
+        question,
+        mode=mode,
+        llm_model=llm_model,
+        reranker=reranker,  # LightRAG will use this internally!
+        num_docs_final=num_docs_final,
+    )
+
+    answer = result["answer"]
+    contexts = result["contexts"]
+
+    if isinstance(contexts, str):
+        contexts = [contexts]
+    elif not isinstance(contexts, list):
+        contexts = [str(contexts)]
+
+    return answer, contexts
+
+
+# ----------------------------------------------------------------
 
 
 # Prompts

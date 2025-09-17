@@ -1,3 +1,4 @@
+# run_rag_evals
 # Auto-save final figure to results/<script_stem>.img (PNG)
 # Supports Matplotlib (guaranteed PNG export).
 import os, atexit
@@ -27,10 +28,19 @@ from dotenv import load_dotenv
 load_dotenv()
 
 import os
+import json
 import datasets
 from tqdm import tqdm
 from langchain.docstore.document import Document as LangchainDocument
 from langchain_openai import ChatOpenAI
+
+import warnings
+import torch
+
+# Suppress the specific warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="colbert")
+warnings.filterwarnings("ignore", category=UserWarning, module="torch.amp")
+
 
 # Import shared functions
 from rag_helpers import (
@@ -39,6 +49,7 @@ from rag_helpers import (
     answer_with_rag,
     run_rag_tests,
     evaluate_answers,
+    answer_with_graphrag,
     RAG_PROMPT_TEMPLATE,
     EVALUATION_PROMPT,
 )
@@ -93,55 +104,217 @@ READER_MODELS = {
 # Minimal configuration - focus on what matters most
 CONFIGS = [
     {
-        "chunk": 400,
-        "reader": "gpt-4o-mini",
+        "method": "graphrag",
+        "mode": "hybrid",
         "rerank": False,
-        "embeddings": "text-embedding-3-small",
+        "reader": "gpt-4o-mini",
     },
     {
         "chunk": 400,
-        "reader": "gpt-4o",
-        "rerank": False,
+        "reader": "gpt-4o-mini",
+        "rerank": True,
         "embeddings": "text-embedding-3-small",
     },
+    # {
+    #     "chunk": 400,
+    #     "reader": "gpt-4o-mini",
+    #     "rerank": False,
+    #     "embeddings": "text-embedding-3-small",
+    # },
+    # {
+    #     "chunk": 400,
+    #     "reader": "gpt-4o",
+    #     "rerank": False,
+    #     "embeddings": "text-embedding-3-small",
+    # },
+    # {
+    #     "chunk": 400,
+    #     "reader": "gpt-4o",
+    #     "rerank": True,
+    #     "embeddings": "text-embedding-3-small",
+    # },
+    # {
+    #     "chunk": 400,
+    #     "reader": "gpt-4o",
+    #     "rerank": False,
+    #     "embeddings": "text-embedding-3-small",
+    # },
+    # {
+    #     "chunk": 400,
+    #     "reader": "gpt-4o",
+    #     "rerank": True,
+    #     "embeddings": "text-embedding-3-small",
+    # },
+    # GraphRAG configs
+    # {
+    #     "method": "graphrag",
+    #     "mode": "mix",
+    #     "rerank": False,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "mix",
+    #     "rerank": True,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "hybrid",
+    #     "rerank": True,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "mix",
+    #     "rerank": False,
+    #     "reader": "gpt-4o",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "mix",
+    #     "rerank": True,
+    #     "reader": "gpt-4o",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "local",
+    #     "rerank": False,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "global",
+    #     "rerank": False,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "hybrid",
+    #     "rerank": False,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "hybrid",
+    #     "rerank": True,
+    #     "reader": "gpt-4o-mini",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "hybrid",
+    #     "rerank": True,
+    #     "reader": "gpt-4o",
+    # },
+    # {
+    #     "method": "graphrag",
+    #     "mode": "mix",
+    #     "rerank": True,
+    #     "reader": "gpt-4o",
+    # },
 ]
 
 # Run tests for each configuration
 for config in CONFIGS:
-    chunk_size = config["chunk"]
-    reader_name = config["reader"]
-    rerank = config["rerank"]
-    embeddings = config["embeddings"]
+    method = config.get("method", "classic")
 
-    reader_llm = READER_MODELS[reader_name]
-    settings_name = f"chunk:{chunk_size}_embeddings:{embeddings.replace('/', '~')}_rerank:{rerank}_reader:{reader_name}"
-    output_file_name = f"output/rag_{settings_name}.json"
+    if method == "graphrag":
+        # GraphRAG configuration
+        mode = config["mode"]
+        reader_name = config["reader"]  # Get the reader name
+        rerank = config.get("rerank", False)  # Get rerank setting
 
-    print(f"\n{'='*60}")
-    print(f"Running configuration: {settings_name}")
-    print(f"{'='*60}")
+        settings_name = f"graphrag_mode:{mode}_rerank:{rerank}_reader:{reader_name}"
+        output_file_name = f"output/rag_{settings_name}.json"
 
-    print("Loading knowledge base embeddings...")
-    knowledge_index = load_embeddings(
-        RAW_KNOWLEDGE_BASE, chunk_size=chunk_size, embedding_model_name=embeddings
-    )
+        print(f"\n{'='*60}")
+        print(f"Running GraphRAG configuration: {settings_name}")
+        print(f"{'='*60}")
 
-    print("Setting up reranker..." if rerank else "Skipping reranker...")
-    reranker = (
-        RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0") if rerank else None
-    )
+        print(
+            f"Using GraphRAG with mode: {mode}, reader: {reader_name}, rerank: {rerank}"
+        )
 
-    print("Running RAG tests...")
-    run_rag_tests(
-        eval_dataset=eval_dataset,
-        llm=reader_llm,
-        knowledge_index=knowledge_index,
-        output_file=output_file_name,
-        reranker=reranker,
-        verbose=False,
-        test_settings=settings_name,
-    )
+        # Pass the actual LLM and reranker like classic RAG!
+        knowledge_index = {"mode": mode}
+        reader_llm = READER_MODELS[reader_name]  # Use the same LLM!
+        reranker = (
+            RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0")
+            if rerank
+            else None
+        )
 
+        print("Running GraphRAG tests...")
+        try:
+            with open(output_file_name, "r") as f:
+                outputs = json.load(f)
+        except:
+            outputs = []
+
+        for example in tqdm(eval_dataset):
+            question = example["question"]
+            if question in [output["question"] for output in outputs]:
+                continue
+
+            # Use GraphRAG with proper LLM and reranker
+            answer, relevant_docs = answer_with_graphrag(
+                question,
+                reader_llm,  # Pass actual LLM instance
+                knowledge_index,
+                reranker=reranker,  # Pass reranker if enabled!
+            )
+
+            result = {
+                "question": question,
+                "true_answer": example["answer"],
+                "source_doc": example["source_doc"],
+                "generated_answer": answer,
+                "retrieved_docs": relevant_docs,
+                "test_settings": settings_name,
+            }
+            outputs.append(result)
+
+            with open(output_file_name, "w") as f:
+                json.dump(outputs, f)
+    else:
+        # Classic RAG configuration
+        chunk_size = config["chunk"]
+        reader_name = config["reader"]
+        rerank = config["rerank"]
+        embeddings = config["embeddings"]
+
+        reader_llm = READER_MODELS[reader_name]
+        settings_name = f"chunk:{chunk_size}_embeddings:{embeddings.replace('/', '~')}_rerank:{rerank}_reader:{reader_name}"
+        output_file_name = f"output/rag_{settings_name}.json"
+
+        print(f"\n{'='*60}")
+        print(f"Running configuration: {settings_name}")
+        print(f"{'='*60}")
+
+        print("Loading knowledge base embeddings...")
+        knowledge_index = load_embeddings(
+            RAW_KNOWLEDGE_BASE, chunk_size=chunk_size, embedding_model_name=embeddings
+        )
+
+        print("Setting up reranker..." if rerank else "Skipping reranker...")
+        reranker = (
+            RAGPretrainedModel.from_pretrained("colbert-ir/colbertv2.0")
+            if rerank
+            else None
+        )
+
+        print("Running RAG tests...")
+        run_rag_tests(
+            eval_dataset=eval_dataset,
+            llm=reader_llm,
+            knowledge_index=knowledge_index,
+            output_file=output_file_name,
+            reranker=reranker,
+            verbose=False,
+            test_settings=settings_name,
+        )
+
+    # Evaluate for both methods
     print("Evaluating answers...")
     evaluate_answers(
         output_file_name, eval_chat_model, evaluator_name, evaluation_prompt_template
@@ -152,6 +325,7 @@ for config in CONFIGS:
 print(f"\n{'='*60}")
 print("All configurations completed!")
 print(f"{'='*60}")
+
 
 import glob, json, regex as re
 import pandas as pd
@@ -175,11 +349,20 @@ result["eval_score_GPT4"] = (result["eval_score_GPT4"] - 1) / 4
 # Calculate average scores
 average_scores = result.groupby("settings")["eval_score_GPT4"].mean()
 
-# Filter configs
+
+# Filter configs - handle both classic and GraphRAG
 config_files = []
 for config in CONFIGS:
-    settings_name = f"chunk:{config['chunk']}_embeddings:{config['embeddings'].replace('/', '~')}_rerank:{config['rerank']}_reader:{config['reader']}"
+    method = config.get("method", "classic")
+    if method == "graphrag":
+        mode = config["mode"]
+        reader_name = config["reader"]
+        rerank = config.get("rerank", False)
+        settings_name = f"graphrag_mode:{mode}_rerank:{rerank}_reader:{reader_name}"
+    else:
+        settings_name = f"chunk:{config['chunk']}_embeddings:{config['embeddings'].replace('/', '~')}_rerank:{config['rerank']}_reader:{config['reader']}"
     config_files.append(f"output/rag_{settings_name}.json")
+
 filtered_scores = average_scores[average_scores.index.isin(config_files)]
 
 # Convert to %
@@ -188,29 +371,52 @@ scores_percentage = filtered_scores * 100
 
 # Build DataFrame for plotting
 def create_label(filepath):
-    pattern = r"chunk:(\d+)_embeddings:([^_]+)_rerank:(\w+)_reader:([^.]+)"
-    match = re.search(pattern, filepath)
-    if match:
-        chunk, embeddings, rerank, reader = match.groups()
-        rerank_str = "w/ rerank" if rerank == "True" else ""
-        return f"Chunk {chunk}, {reader}{', ' + rerank_str if rerank_str else ''}"
+    if "graphrag" in filepath:
+        # Extract GraphRAG settings
+        match = re.search(r"graphrag_mode:(\w+)_rerank:(\w+)_reader:([^.]+)", filepath)
+        if match:
+            mode, rerank, reader = match.groups()
+            rerank_str = " w/ rerank" if rerank == "True" else ""
+            return f"GraphRAG ({mode}) {reader}{rerank_str}"
+
+    else:
+        # Original pattern for classic RAG
+        pattern = r"chunk:(\d+)_embeddings:([^_]+)_rerank:(\w+)_reader:([^.]+)"
+        match = re.search(pattern, filepath)
+        if match:
+            chunk, embeddings, rerank, reader = match.groups()
+            rerank_str = "w/ rerank" if rerank == "True" else ""
+            return f"Chunk {chunk}, {reader}{', ' + rerank_str if rerank_str else ''}"
     return filepath
 
 
-df_plot = pd.DataFrame(
-    {
-        "Configuration": [create_label(idx) for idx in scores_percentage.index],
-        "Accuracy": scores_percentage.values,
-        "Chunk Size": [
-            int(re.search(r"chunk:(\d+)", idx).group(1))
-            for idx in scores_percentage.index
-        ],
-        "Reader Model": [
-            re.search(r"reader:([^.]+)", idx).group(1)
-            for idx in scores_percentage.index
-        ],
+# Create plot data with safe extraction of optional fields
+plot_data = []
+for idx in scores_percentage.index:
+    config_dict = {
+        "Configuration": create_label(idx),
+        "Accuracy": scores_percentage[idx],
     }
-).sort_values("Accuracy", ascending=True)
+
+    # Try to extract chunk size (only for classic RAG)
+    chunk_match = re.search(r"chunk:(\d+)", idx)
+    if chunk_match:
+        config_dict["Chunk Size"] = int(chunk_match.group(1))
+    else:
+        config_dict["Chunk Size"] = 0  # or None for GraphRAG
+
+    # Extract reader model or method
+    if "graphrag" in idx:
+        config_dict["Reader Model"] = "graphrag"
+    else:
+        reader_match = re.search(r"reader:([^.]+)", idx)
+        config_dict["Reader Model"] = (
+            reader_match.group(1) if reader_match else "unknown"
+        )
+
+    plot_data.append(config_dict)
+
+df_plot = pd.DataFrame(plot_data).sort_values("Accuracy", ascending=True)
 
 # Plot and export
 fig, ax = plt.subplots(figsize=(12, 4 + 0.4 * len(df_plot)))
@@ -223,7 +429,7 @@ ax.barh(y, x)
 for i, v in enumerate(x):
     ax.text(v + 1, i, f"{v:.1f}%", va="center")
 
-ax.set_title("RAG Performance: Chunk Size and Reader Model Comparison")
+ax.set_title("RAG Performance: Classic vs GraphRAG Comparison")
 ax.set_xlabel("Accuracy (%)")
 ax.set_xlim(0, 100)
 ax.invert_yaxis()  # highest at top after ascending sort
