@@ -1,0 +1,15 @@
+[
+    {
+        "chunk_size": 200,
+        "k_retrieve": 3,
+        "use_reranker": false,
+        "llm_model": "gpt-4o-mini"
+    },
+    {
+        "chunk_size": 800,
+        "k_retrieve": 15,
+        "k_rerank": 5,
+        "use_reranker": true,
+        "llm_model": "gpt-4o"
+    }
+]
