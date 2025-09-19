@@ -7,6 +7,7 @@ from pathlib import Path
 @dataclass
 class RAGConfig:
     # Chunking
+    chunking: bool = False
     chunk_size: int = 400
     chunk_overlap: int = 50
 
@@ -17,16 +18,19 @@ class RAGConfig:
 
     # Retrieval
     vector_store_type: Literal["faiss", "chroma"] = "faiss"
-    k_retrieve: int = 5
+    k_retrieve: int = 10
+    similarity_threshold: float = 1.0  # FAISS distance threshold (lower = more similar)
 
     # Reranking
     use_reranker: bool = False
     reranker_model: Optional[str] = "BAAI/bge-reranker-base"
-    k_rerank: int = 3
+    rerank_threshold: float = 0.5
+    min_docs: int = 0
+    max_docs: int = 4
 
     # Generation
     llm_model: str = "gpt-4o-mini"
-    temperature: float = 0.1
+    temperature: float = 1
     max_tokens: int = 512
 
     # Storage

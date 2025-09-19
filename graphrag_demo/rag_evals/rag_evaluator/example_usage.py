@@ -10,25 +10,39 @@ load_dotenv()
 # Default RAG configurations
 DEFAULT_CONFIGS = [
     {
-        "chunk_size": 400,
-        "k_retrieve": 5,
+        "chunking": False,
+        "k_retrieve": 10,
         "use_reranker": False,
+        "min_docs": 0,
+        "max_docs": 4,
         "llm_model": "gpt-4o-mini",
     },
     {
-        "chunk_size": 400,
+        "chunking": False,
         "k_retrieve": 10,
-        "k_rerank": 5,
         "use_reranker": True,
+        "min_docs": 0,
+        "max_docs": 4,
         "llm_model": "gpt-4o-mini",
     },
-    {
-        "chunk_size": 600,
-        "k_retrieve": 10,
-        "k_rerank": 3,
-        "use_reranker": True,
-        "llm_model": "gpt-4o-mini",
-    },
+    # {
+    #     "chunking": False,
+    #     "k_retrieve": 10,
+    #     "use_reranker": True,
+    #     "rerank_threshold": 0.5,
+    #     "min_docs": 0,
+    #     "max_docs": 4,
+    #     "llm_model": "gpt-4o-mini",
+    # },
+    # {
+    #     "chunking": False,
+    #     "k_retrieve": 15,
+    #     "use_reranker": True,
+    #     "rerank_threshold": 0.3,
+    #     "min_docs": 0,
+    #     "max_docs": 4,
+    #     "llm_model": "gpt-4o-mini",
+    # },
 ]
 
 

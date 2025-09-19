@@ -27,12 +27,15 @@ class RAGDataset:
         if questions_file:
             questions_path = base_path / questions_file
         else:
-            # Default
-            questions_path = (
-                base_path / "filtered_eval_questions.jsonl"
-                if (base_path / "filtered_eval_questions.jsonl").exists()
-                else base_path / "sampled_eval_questions.jsonl"
-            )
+            # Default to sampled questions
+            questions_path = base_path / "sampled_eval_questions.jsonl"
+
+            # Verify it exists
+            if not questions_path.exists():
+                raise FileNotFoundError(
+                    f"Default questions file not found: {questions_path}. "
+                    f"Please ensure sampled_eval_questions.jsonl exists in {base_path}"
+                )
 
         return cls(
             name=dataset_name,

@@ -6,6 +6,9 @@ output/
 results/
 data_BACKUPS/
 
+
+mynotes.md
+
 lightrag_store
 lightrag.log
 lightrag.log.*

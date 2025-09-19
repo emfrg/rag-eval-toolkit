@@ -37,31 +37,24 @@ class RAGEvaluator:
     def evaluate(self, rag_system: RAGSystem, dataset: RAGDataset) -> Dict[str, Any]:
         """Run RAGAS evaluation on a RAG system."""
 
-        # Load questions
         questions = dataset.load_questions()
-
-        # Create SingleTurnSample instances
         samples = []
 
         print("Generating RAG responses...")
         for q in tqdm(questions):
-            # Get RAG response
             answer, retrieved_docs = rag_system.query(q["question"])
 
-            # Create SingleTurnSample
+            # Create RAGAS sample for evaluation
             sample = SingleTurnSample(
                 user_input=q["question"],
                 response=answer,
                 retrieved_contexts=[doc.page_content for doc in retrieved_docs],
-                reference=q["answer"],  # ground truth
+                reference=q["answer"],
             )
             samples.append(sample)
 
-        # Create EvaluationDataset from samples
-        eval_dataset = EvaluationDataset(samples=samples)
-
         # Run RAGAS evaluation
-        print("Running RAGAS evaluation...")
+        eval_dataset = EvaluationDataset(samples=samples)
         result = evaluate(dataset=eval_dataset, metrics=self.metrics)
 
         return result

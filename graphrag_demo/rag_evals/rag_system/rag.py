@@ -41,7 +41,7 @@ class RAGSystem:
             """
 You are a helpful assistant answering questions based on the provided context.
 Use only the information from the context to answer. If the context doesn't contain 
-enough information, say so clearly.
+enough information to answer the question, respond with exactly: "Insufficient information."
 
 Context:
 {context}
@@ -54,9 +54,13 @@ Answer: """
     def build_index_from_dataset(self, dataset: RAGDataset):
         """Build index from a RAGDataset."""
         # Create unique index path based on dataset and config
-        index_name = (
-            f"{dataset.name}_{self.config.chunk_size}_{self.config.embedding_model}"
-        )
+        if self.config.chunking:
+            index_name = (
+                f"{dataset.name}_{self.config.chunk_size}_{self.config.embedding_model}"
+            )
+        else:
+            index_name = f"{dataset.name}_no_chunk_{self.config.embedding_model}"
+
         index_path = self.config.cache_dir / index_name
 
         if index_path.exists():
@@ -83,10 +87,11 @@ Answer: """
                 )
             )
 
-        # Chunk documents
-        documents = chunk_documents(
-            documents, self.config.chunk_size, self.config.chunk_overlap
-        )
+        # Only chunk if needed
+        if self.config.chunking:
+            documents = chunk_documents(
+                documents, self.config.chunk_size, self.config.chunk_overlap
+            )
 
         # Create vector store
         if self.config.vector_store_type == "faiss":
@@ -100,18 +105,39 @@ Answer: """
         if self.vector_store is None:
             raise ValueError("Index not built. Call build_index() first.")
 
-        # Initial retrieval
-        docs = self.vector_store.similarity_search(query, k=self.config.k_retrieve)
+        # Initial retrieval with scores (FAISS returns distances - lower is better)
+        docs_and_scores = self.vector_store.similarity_search_with_score(
+            query, k=self.config.k_retrieve
+        )
 
-        # Optional reranking
+        # Filter by distance threshold (FAISS uses L2 distance - lower is more similar)
+        # Typical FAISS distances: 0 = identical, 0.5 = very similar, 1+ = less similar
+        filtered = []
+        for doc, distance in docs_and_scores:
+            if distance <= self.config.similarity_threshold:  # e.g., 1.0
+                filtered.append(doc)
+            if len(filtered) >= self.config.max_docs:
+                break
+
+        docs = filtered
+
+        # If using reranker, rerank and filter further
         if self.reranker and len(docs) > 0:
-            # Prepare pairs for reranking
             pairs = [[query, doc.page_content] for doc in docs]
             scores = self.reranker.predict(pairs)
 
-            # Sort by score and take top k
-            sorted_indices = np.argsort(scores)[::-1][: self.config.k_rerank]
-            docs = [docs[i] for i in sorted_indices]
+            # Filter by rerank threshold
+            relevant_indices = [
+                i
+                for i, score in enumerate(scores)
+                if score >= self.config.rerank_threshold
+            ]
+
+            if relevant_indices:
+                relevant_indices.sort(key=lambda i: scores[i], reverse=True)
+                docs = [docs[i] for i in relevant_indices][: self.config.max_docs]
+            else:
+                docs = []
 
         return docs
 
