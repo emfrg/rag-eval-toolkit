@@ -14,8 +14,8 @@ config = RAGConfig(
     chunking=False,  # MultiHopRAG doesn't need chunking
     embedding_model="text-embedding-3-small",
     use_reranker=False,
-    similarity_threshold=0.8,  # lower better
-    rerank_threshold=0.5,  # Keep docs above this relevance score
+    similarity_threshold=0.8,  # (FAISS distance) lower better 0 - 2
+    rerank_threshold=0.5,  # (BGE cross-encoder) higher better 0 - 1
     llm_model="gpt-4o-mini",
 )
 
