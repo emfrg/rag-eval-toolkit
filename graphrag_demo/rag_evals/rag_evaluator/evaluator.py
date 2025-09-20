@@ -6,12 +6,13 @@ from tqdm import tqdm
 
 from ragas import evaluate, SingleTurnSample, EvaluationDataset
 from ragas.metrics import (
-    faithfulness,
-    answer_relevancy,
-    context_precision,
-    context_recall,
-    answer_correctness,
-    answer_similarity,
+    Faithfulness,
+    ResponseRelevancy,
+    LLMContextPrecisionWithReference,
+    LLMContextRecall,
+    FactualCorrectness,
+    SemanticSimilarity,
+    ContextEntityRecall,
 )
 
 from rag_system import RAGSystem, RAGDataset
@@ -24,17 +25,21 @@ class RAGEvaluator:
         """Initialize with RAGAS metrics."""
         if metrics is None:
             self.metrics = [
-                faithfulness,
-                # answer_relevancy, # TODO: Add back in and fix
-                # context_precision, # TODO: Add back in and fix
-                # context_recall, # TODO: Add back in and fix
-                answer_correctness,
-                answer_similarity,
+                Faithfulness(),
+                # ResponseRelevancy(),  # BUG: this creates indexerror
+                # LLMContextPrecisionWithReference(),
+                LLMContextRecall(),
+                FactualCorrectness(),
+                FactualCorrectness(mode="precision"),
+                SemanticSimilarity(),
+                # ContextEntityRecall(),
             ]
         else:
             self.metrics = metrics
 
-    def evaluate(self, rag_system: RAGSystem, dataset: RAGDataset) -> Dict[str, Any]:
+    def evaluate(
+        self, rag_system: RAGSystem, dataset: RAGDataset
+    ) -> Any:  # TODO: fix type
         """Run RAGAS evaluation on a RAG system."""
 
         questions = dataset.load_questions()
@@ -45,12 +50,11 @@ class RAGEvaluator:
             try:
                 answer, retrieved_docs = rag_system.query(q["question"])
 
-                # Create RAGAS sample for evaluation
                 sample = SingleTurnSample(
                     user_input=q["question"],
                     response=answer,
                     retrieved_contexts=[doc.page_content for doc in retrieved_docs],
-                    reference=q.get("answer", ""),  # Safe access with default
+                    reference=q.get("answer", ""),
                 )
                 samples.append(sample)
             except Exception as e:
@@ -64,7 +68,6 @@ class RAGEvaluator:
 
         print(f"Evaluating {len(samples)} samples with RAGAS...")
 
-        # Run RAGAS evaluation
         eval_dataset = EvaluationDataset(samples=samples)
         result = evaluate(dataset=eval_dataset, metrics=self.metrics)
 

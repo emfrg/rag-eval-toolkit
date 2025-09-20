@@ -1,6 +1,7 @@
 # rag_system/rag.py
 import os
 from typing import List, Tuple, Optional
+from pathlib import Path
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_community.vectorstores import FAISS, Chroma
 from langchain.schema import Document
@@ -11,6 +12,7 @@ import numpy as np
 from .config import RAGConfig
 from .dataset import RAGDataset
 from .document_processor import chunk_documents
+from .prompts import STRICT_RAG_PROMPT
 
 
 class RAGSystem:
@@ -37,19 +39,7 @@ class RAGSystem:
 
     def _setup_prompt(self):
         """Setup the prompt template for generation."""
-        self.prompt = ChatPromptTemplate.from_template(
-            """
-You are a helpful assistant answering questions based on the provided context.
-Use only the information from the context to answer. If the context doesn't contain 
-enough information to answer the question, respond with exactly: "Insufficient information."
-
-Context:
-{context}
-
-Question: {question}
-
-Answer: """
-        )
+        self.prompt = ChatPromptTemplate.from_template(STRICT_RAG_PROMPT)
 
     def build_index_from_dataset(self, dataset: RAGDataset):
         """Build index from a RAGDataset."""
