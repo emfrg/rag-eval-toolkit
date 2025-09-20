@@ -40,18 +40,29 @@ class RAGEvaluator:
         questions = dataset.load_questions()
         samples = []
 
-        print("Generating RAG responses...")
+        print(f"Generating RAG responses for {len(questions)} questions...")
         for q in tqdm(questions):
-            answer, retrieved_docs = rag_system.query(q["question"])
+            try:
+                answer, retrieved_docs = rag_system.query(q["question"])
 
-            # Create RAGAS sample for evaluation
-            sample = SingleTurnSample(
-                user_input=q["question"],
-                response=answer,
-                retrieved_contexts=[doc.page_content for doc in retrieved_docs],
-                reference=q["answer"],
-            )
-            samples.append(sample)
+                # Create RAGAS sample for evaluation
+                sample = SingleTurnSample(
+                    user_input=q["question"],
+                    response=answer,
+                    retrieved_contexts=[doc.page_content for doc in retrieved_docs],
+                    reference=q.get("answer", ""),  # Safe access with default
+                )
+                samples.append(sample)
+            except Exception as e:
+                print(
+                    f"\nError processing question {q.get('question_id', 'unknown')}: {e}"
+                )
+                continue
+
+        if not samples:
+            raise ValueError("No valid samples generated for evaluation")
+
+        print(f"Evaluating {len(samples)} samples with RAGAS...")
 
         # Run RAGAS evaluation
         eval_dataset = EvaluationDataset(samples=samples)

@@ -1,8 +1,10 @@
 # rag_evaluator/runner.py
 import json
+import traceback
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
+import pandas as pd
 
 from .evaluator import RAGEvaluator
 from rag_system import RAGConfig, RAGSystem, RAGDataset
@@ -47,18 +49,30 @@ class ExperimentRunner:
             # Evaluate with RAGAS
             ragas_result = self.evaluator.evaluate(rag_system, dataset)
 
-            # Store results - handle lists by averaging them
+            # Convert to pandas DataFrame to access scores
+            df = ragas_result.to_pandas()
+
+            # Get metric columns (exclude metadata columns like question, answer, etc.)
+            metric_columns = [
+                col
+                for col in df.columns
+                if col
+                in [
+                    "faithfulness",
+                    "answer_correctness",
+                    "answer_similarity",
+                    "context_precision",
+                    "context_recall",
+                    "answer_relevancy",
+                ]
+            ]
+
+            # Calculate mean scores for each metric
             scores_dict = {}
-            for metric in ["faithfulness", "answer_correctness", "answer_similarity"]:
-                try:
-                    score = ragas_result[metric]
-                    # If it's a list, average it
-                    if isinstance(score, list):
-                        scores_dict[metric] = sum(score) / len(score)
-                    else:
-                        scores_dict[metric] = score
-                except:
-                    pass
+            for metric in metric_columns:
+                mean_score = df[metric].dropna().mean()
+                if not pd.isna(mean_score):
+                    scores_dict[metric] = float(mean_score)
 
             result = {
                 "config_id": i,
@@ -70,7 +84,7 @@ class ExperimentRunner:
             # Save individual result
             output_file = self.output_dir / f"{experiment_name}_config_{i}.json"
             with open(output_file, "w") as f:
-                json.dump(result, f, indent=2)
+                json.dump(result, f, indent=2, default=str)
 
             print(f"\nResults:")
             for metric, score in scores_dict.items():

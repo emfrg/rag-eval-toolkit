@@ -1,4 +1,4 @@
-# run_evaluation.py
+# rag_evaluator/run_evaluation.py
 import click
 import json
 from pathlib import Path
@@ -112,19 +112,42 @@ def main(dataset_dir, questions_file, experiment_name, output_dir, configs_file,
     for result in results:
         config_id = result["config_id"]
         scores = result["scores"]
+        config = result["config"]
 
         click.echo(f"\nConfig {config_id}:")
-        click.echo(f"  Chunk size: {result['config']['chunk_size']}")
-        click.echo(f"  Reranker: {result['config'].get('use_reranker', False)}")
-        click.echo(f"  k_retrieve: {result['config'].get('k_retrieve', 5)}")
+
+        # Display actual config parameters safely
+        if "chunking" in config:
+            if config.get("chunking", False):
+                click.echo(f"  Chunking: Enabled")
+                click.echo(f"    - Chunk size: {config.get('chunk_size', 'default')}")
+                click.echo(
+                    f"    - Chunk overlap: {config.get('chunk_overlap', 'default')}"
+                )
+            else:
+                click.echo(f"  Chunking: Disabled")
+
+        click.echo(f"  Reranker: {config.get('use_reranker', False)}")
+        if config.get("use_reranker"):
+            click.echo(
+                f"    - Rerank threshold: {config.get('rerank_threshold', 'default')}"
+            )
+            click.echo(f"    - Min docs: {config.get('min_docs', 'default')}")
+            click.echo(f"    - Max docs: {config.get('max_docs', 'default')}")
+
+        click.echo(f"  k_retrieve: {config.get('k_retrieve', 'default')}")
+        click.echo(f"  LLM Model: {config.get('llm_model', 'default')}")
 
         # Print individual scores
-        click.echo("  Scores:")
-        for metric, score in scores.items():
-            click.echo(f"    {metric}: {score:.4f}")
+        if scores:
+            click.echo("  Scores:")
+            for metric, score in scores.items():
+                click.echo(f"    {metric}: {score:.4f}")
 
-        avg_score = sum(scores.values()) / len(scores) if scores else 0
-        click.echo(f"  Average Score: {avg_score:.4f}")
+            avg_score = sum(scores.values()) / len(scores)
+            click.echo(f"  Average Score: {avg_score:.4f}")
+        else:
+            click.echo("  No scores available (check errors above)")
 
     click.echo(f"\nResults saved to: {output_dir}")
 
