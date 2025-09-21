@@ -1,10 +1,12 @@
 # User generated files
 rag_cache/
+graphrag_cache/
 data/
 datasets_local/
 output/
 results/
 data_BACKUPS/
+
 
 
 mynotes.md

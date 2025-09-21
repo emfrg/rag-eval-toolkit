@@ -4,6 +4,8 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+raise NotImplementedError("This file is not implemented yet")
+
 # Load your dataset
 dataset = RAGDataset.from_dataset_dir(
     "data/eval_datasets/yixuantt_MultiHopRAG_89ba9d15"

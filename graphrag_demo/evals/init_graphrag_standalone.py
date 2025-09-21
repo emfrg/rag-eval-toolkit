@@ -76,26 +76,26 @@ async def insert_all(rag: LightRAG, records):
 
 
 async def main():
-    # rag = await init_rag()
-    # print("Reading corpus…")
-    # records = list(iter_jsonl(CORPUS))
-    # print(f"Inserting {len(records)} docs…")
-    # await insert_all(rag, records)
-
-    # # (Optional) quick sanity query
-    # ans = await rag.aquery(
-    #     "What are the main topics covered in this corpus?",
-    #     param=QueryParam(mode="hybrid"),  # "local" | "global" | "hybrid" | "mix"
-    # )
-    # print(ans)
-
     rag = await init_rag()
+    print("Reading corpus…")
+    records = list(iter_jsonl(CORPUS))
+    print(f"Inserting {len(records)} docs…")
+    await insert_all(rag, records)
 
+    # (Optional) quick sanity query
     ans = await rag.aquery(
-        "What is this corpus about?",  # "What are the main topics covered in this corpus?",
-        param=QueryParam(mode="hybrid"),
+        "What are the main topics covered in this corpus?",
+        param=QueryParam(mode="hybrid"),  # "local" | "global" | "hybrid" | "mix"
     )
     print(ans)
+
+    # rag = await init_rag()
+
+    # ans = await rag.aquery(
+    #     "What is this corpus about?",  # "What are the main topics covered in this corpus?",
+    #     param=QueryParam(mode="hybrid"),
+    # )
+    # print(ans)
 
 
 if __name__ == "__main__":
