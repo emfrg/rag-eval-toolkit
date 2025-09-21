@@ -25,6 +25,22 @@ DEFAULT_CONFIGS = [
         # "max_docs": 4,
         "llm_model": "gpt-4o-mini",
     },
+    {
+        "chunking": False,
+        "k_retrieve": 50,
+        "use_reranker": True,
+        # "min_docs": 0,
+        # "max_docs": 4,
+        "llm_model": "gpt-4o-mini",
+    },
+    {
+        "chunking": False,
+        "k_retrieve": 50,
+        "use_reranker": True,
+        "min_docs": 0,
+        "max_docs": 10,
+        "llm_model": "gpt-4o-mini",
+    },
     # {
     #     "chunking": False,
     #     "k_retrieve": 20,

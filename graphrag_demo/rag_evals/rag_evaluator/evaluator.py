@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from tqdm import tqdm
 
 from ragas import evaluate, SingleTurnSample, EvaluationDataset
+from ragas.evaluation import EvaluationResult
 from ragas.metrics import (
     Faithfulness,
     ResponseRelevancy,
@@ -37,9 +38,7 @@ class RAGEvaluator:
         else:
             self.metrics = metrics
 
-    def evaluate(
-        self, rag_system: RAGSystem, dataset: RAGDataset
-    ) -> Any:  # TODO: fix type
+    def evaluate(self, rag_system: RAGSystem, dataset: RAGDataset) -> EvaluationResult:
         """Run RAGAS evaluation on a RAG system."""
 
         questions = dataset.load_questions()
