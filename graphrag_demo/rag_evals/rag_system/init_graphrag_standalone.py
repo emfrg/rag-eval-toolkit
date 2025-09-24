@@ -28,6 +28,23 @@ def _encode_allow_special(self, content: str):
 Tokenizer.encode = _encode_allow_special
 
 
+# --- helpers ---------------------------------------------------------------
+async def answer_and_context(
+    rag: LightRAG, query: str, mode: str = "hybrid", top_k: int = 50
+) -> tuple[str, str]:
+    """Return model answer and retrieved context using two explicit calls."""
+    context = await rag.aquery(
+        query, param=QueryParam(mode=mode, top_k=top_k, only_need_context=True)
+    )
+    answer = await rag.aquery(
+        query, param=QueryParam(mode=mode, top_k=top_k, only_need_context=False)
+    )
+    return answer, context
+
+
+# ---------------------------------------------------------------------------
+
+
 def select_llm_func(model_name: str):
     if model_name == "gpt-4o":
         return gpt_4o_complete
@@ -94,7 +111,17 @@ async def insert_records(
         batch = records[start : start + batch_size]
         texts = [text for text, _ in batch]
         ids = [doc_id for _, doc_id in batch]
-        await rag.ainsert(texts, ids=ids)
+        # Construct file paths from provided document identifiers.
+        file_paths = [
+            (
+                doc_id.strip()
+                if isinstance(doc_id, str) and doc_id.strip()
+                else f"doc-{start + i}"
+            )
+            for i, (_, doc_id) in enumerate(batch)
+        ]
+        ids_arg = ids if all(doc_id is not None for doc_id in ids) else None
+        await rag.ainsert(texts, ids=ids_arg, file_paths=file_paths)
         total_inserted += len(texts)
 
     return total_inserted
@@ -137,13 +164,15 @@ async def run_indexing(
         print(f"Reusing existing LightRAG index at {workdir}")
 
     if not skip_sanity_query:
-        response = await rag.aquery(
-            sanity_query,
-            param=QueryParam(mode="hybrid", top_k=50),
+
+        answer, context = await answer_and_context(
+            rag, sanity_query, mode="hybrid", top_k=50
         )
         print("\nSanity query:")
         print(f"Q: {sanity_query}")
-        print(f"A: {response}")
+        print(f"A: {answer}")
+        print("\nRetrieved context:")
+        print(context)
 
 
 @click.command()

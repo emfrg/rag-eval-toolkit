@@ -100,7 +100,7 @@ class ExperimentRunner:
         """Load scores dict from a previous result file."""
         with path.open("r", encoding="utf-8") as f:
             data = json.load(f)
-        scores = data.get("scores", {}) or {}
+        scores = data.get("scores", {}) or {}  # TODO: check this syntax
         out: Dict[str, float] = {}
         for k, v in scores.items():
             try:
@@ -168,7 +168,9 @@ class ExperimentRunner:
                         ]
                         retrieved_texts = [doc.page_content for doc in retrieved_docs]
 
-                        required_ids = q.get("required_evidence", []) or []
+                        required_ids = (
+                            q.get("required_evidence", []) or []
+                        )  # TODO: check this syntax
                         required_texts = self._required_texts(dataset, required_ids)
 
                         record = {

@@ -1,7 +1,22 @@
-# rag_system/__init__.py
+from .base import BaseRAGSystem, IndexReport
 from .config import RAGConfig
-from .rag import RAGSystem
 from .dataset import RAGDataset
-from .document_processor import load_corpus, chunk_documents
+from .naive import NaiveRAGSystem
+from .rag import RAGSystem
 
-__all__ = ["RAGConfig", "RAGSystem", "RAGDataset", "load_corpus", "chunk_documents"]
+try:
+    from .graphrag import LightRAGSystem  # type: ignore
+except ModuleNotFoundError:  # pragma: no cover
+    LightRAGSystem = None  # type: ignore
+
+__all__ = [
+    "BaseRAGSystem",
+    "IndexReport",
+    "RAGConfig",
+    "RAGDataset",
+    "RAGSystem",
+    "NaiveRAGSystem",
+]
+
+if LightRAGSystem is not None:
+    __all__.append("LightRAGSystem")
