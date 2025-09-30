@@ -12,13 +12,13 @@ def build_configs(
     *, rag_cache: str, graph_cache: str, force_graphrag: bool
 ) -> List[Dict[str, Any]]:
     """
-    Return the two default configurations: one for the naive FAISS backend and one for LightRAG.
+    Return default configurations for both backends (two per architecture).
     """
     naive_config: Dict[str, Any] = {
         "rag_model": "naive",
         "llm_model": "gpt-4o-mini",
         "temperature": 1.0,
-        "max_tokens": 512,
+        "max_tokens": 80,
         "naive": {
             "chunk_documents": False,
             "chunk_size": 400,
@@ -36,11 +36,33 @@ def build_configs(
         },
     }
 
+    naive_chunked_config: Dict[str, Any] = {
+        "rag_model": "naive",
+        "llm_model": "gpt-4o-mini",
+        "temperature": 1.0,
+        "max_tokens": 80,
+        "naive": {
+            "chunk_documents": False,
+            "chunk_size": 600,
+            "chunk_overlap": 100,
+            "embedding_model": "text-embedding-3-small",
+            "vector_store": "faiss",
+            "k_retrieve": 50,
+            "similarity_threshold": 1.0,
+            "use_reranker": True,
+            "reranker_model": "BAAI/bge-reranker-base",
+            "rerank_threshold": 0.5,
+            "min_docs": 0,
+            "max_docs": 20,
+            "cache_dir": rag_cache,
+        },
+    }
+
     graphrag_config: Dict[str, Any] = {
         "rag_model": "graphrag",
         "llm_model": "gpt-4o-mini",
         "temperature": 1.0,
-        "max_tokens": 512,
+        "max_tokens": 80,
         "graphrag": {
             "indexing": {
                 "graph_cache_dir": graph_cache,
@@ -56,7 +78,32 @@ def build_configs(
         },
     }
 
-    return [naive_config, graphrag_config]
+    graphrag_semantic_config: Dict[str, Any] = {
+        "rag_model": "graphrag",
+        "llm_model": "gpt-4o-mini",
+        "temperature": 1.0,
+        "max_tokens": 80,
+        "graphrag": {
+            "indexing": {
+                "graph_cache_dir": graph_cache,
+                "max_parallel_insert": 4,
+                "batch_size": 128,
+                "force_reindex": force_graphrag,
+            },
+            "query": {
+                "mode": "mix",
+                "top_k": 50,
+                "summary_top_k": 10,
+            },
+        },
+    }
+
+    return [
+        naive_config,
+        naive_chunked_config,
+        graphrag_config,
+        graphrag_semantic_config,
+    ]
 
 
 def run(

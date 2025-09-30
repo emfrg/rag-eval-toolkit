@@ -20,7 +20,7 @@ def run_basic_download():
         "--dataset-type",
         "multi_hop",
         "--num-samples",
-        "20",  # 100
+        "100",  # 100
     ]
     subprocess.run(cmd)
 
