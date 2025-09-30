@@ -91,6 +91,12 @@ def _print_contexts(contexts: List[Document], limit: int = 5) -> None:
     help="Force rebuild of the LightRAG index.",
 )
 @click.option(
+    "--inline-metadata/--no-inline-metadata",
+    default=False,
+    show_default=True,
+    help="Embed document metadata within the indexed content.",
+)
+@click.option(
     "--skip-sanity-query",
     is_flag=True,
     help="Skip running the sanity query after indexing.",
@@ -112,6 +118,7 @@ def main(
     force: bool,
     skip_sanity_query: bool,
     sanity_query: str,
+    inline_metadata: bool,
 ) -> None:
     load_dotenv()
 
@@ -130,6 +137,7 @@ def main(
                 "max_parallel_insert": max_parallel_insert,
                 "batch_size": batch_size,
                 "force_reindex": force,
+                "inline_metadata": inline_metadata,
             },
             "query": {
                 "mode": query_mode,

@@ -1,6 +1,6 @@
 # rag_system/document_processor.py
 import json
-from typing import List, Dict
+from typing import List, Dict, Any, Mapping
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
 
@@ -18,6 +18,32 @@ def load_corpus(corpus_path: str) -> List[Document]:
                 )
             )
     return documents
+
+
+def build_document_text(
+    *,
+    content: str,
+    metadata: Mapping[str, Any] | None,
+    inline_metadata: bool,
+) -> str:
+    if not inline_metadata:
+        return content
+    meta = metadata or {}
+    if not meta:
+        return content
+    lines = []
+    for key, value in meta.items():
+        if value is None:
+            continue
+        if isinstance(value, (list, tuple, set)):
+            value_str = ", ".join(str(item) for item in value)
+        else:
+            value_str = str(value)
+        lines.append(f"{key}: {value_str}")
+    if not lines:
+        return content
+    meta_block = "\n".join(lines)
+    return f"---CONTENT---\n{content.strip()}\n---METADATA---\n{meta_block}"
 
 
 def chunk_documents(

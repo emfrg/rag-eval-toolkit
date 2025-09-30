@@ -20,6 +20,8 @@ def _index_directory(dataset: RAGDataset, config: RAGConfig) -> Path:
         if cfg.chunk_documents
         else f"no_chunk_{cfg.embedding_model}"
     )
+    if cfg.inline_metadata:
+        suffix = f"{suffix}_meta"
     return cfg.cache_dir / f"{dataset.name}_{suffix}"
 
 
@@ -53,6 +55,7 @@ def _print_contexts(contexts: List[Document], limit: int) -> None:
         doc_id = doc.metadata["doc_id"] if "doc_id" in doc.metadata else "unknown"
         snippet = doc.page_content.replace("\n", " ")[:200]
         click.echo(f"  - {doc_id}: {snippet}...")
+        # click.echo(f" - {doc_id}: {doc.page_content}")
 
 
 def _resolve_question(dataset: RAGDataset, override: str | None) -> Tuple[str, str]:
@@ -179,6 +182,12 @@ def _resolve_question(dataset: RAGDataset, override: str | None) -> Tuple[str, s
     help="Force rebuild of the FAISS index even if it exists.",
 )
 @click.option(
+    "--inline-metadata/--no-inline-metadata",
+    default=False,
+    show_default=True,
+    help="Embed document metadata within the indexed content.",
+)
+@click.option(
     "--sanity-question",
     default=None,
     help="Run this question after indexing; defaults to the first question in the dataset.",
@@ -215,6 +224,7 @@ def main(
     sanity_question: str | None,
     skip_sanity_query: bool,
     context_limit: int,
+    inline_metadata: bool,
 ) -> None:
     load_dotenv()
 
@@ -243,6 +253,7 @@ def main(
             "min_docs": min_docs,
             "max_docs": max_docs,
             "cache_dir": cache_dir,
+            "inline_metadata": inline_metadata,
         },
     )
 

@@ -13,6 +13,8 @@ from tqdm.auto import tqdm
 from .base import BaseRAGSystem, IndexReport
 from .config import RAGConfig
 from .dataset import RAGDataset
+from .document_processor import build_document_text
+from .prompts import STRICT_RAG_PROMPT
 
 try:
     from lightrag import LightRAG, QueryParam
@@ -71,7 +73,9 @@ class LightRAGSystem(BaseRAGSystem):
 
     def build_index(self, dataset: RAGDataset) -> IndexReport:
         cfg = self.config.graphrag.indexing
-        workdir = cfg.graph_cache_dir / dataset.name
+        workdir_name = f"{dataset.name}_meta" if cfg.inline_metadata else dataset.name
+        workdir = cfg.graph_cache_dir / workdir_name
+
         self._workdir = workdir
 
         # Decide whether a fresh index is needed before LightRAG touches the directory
@@ -83,7 +87,9 @@ class LightRAGSystem(BaseRAGSystem):
 
         workdir.mkdir(parents=True, exist_ok=True)
 
-        records = self._load_corpus_records(dataset.corpus_path)
+        records = self._load_corpus_records(
+            dataset.corpus_path, inline_metadata=cfg.inline_metadata
+        )
         total_docs = len(records)
 
         self._rag = self._run_async(self._initialize_light_rag(workdir))
@@ -184,7 +190,11 @@ class LightRAGSystem(BaseRAGSystem):
 
     def _query_param(self, *, only_context: bool = False) -> QueryParam:
         cfg = self.config.graphrag.query
-        params: Dict[str, Any] = {"mode": cfg.mode, "top_k": cfg.top_k}
+        params: Dict[str, Any] = {
+            "mode": cfg.mode,
+            "top_k": cfg.top_k,
+            "user_prompt": STRICT_RAG_PROMPT,
+        }
         params["only_need_context"] = only_context
         return QueryParam(**params)
 
@@ -236,13 +246,17 @@ class LightRAGSystem(BaseRAGSystem):
         return documents
 
     def _load_corpus_records(
-        self, corpus_path: Path
+        self, corpus_path: Path, *, inline_metadata: bool
     ) -> List[Tuple[str, Optional[str]]]:
         records: List[Tuple[str, Optional[str]]] = []
         with corpus_path.open("r", encoding="utf-8") as handle:
             for line in handle:
                 data = json.loads(line)
-                text = data.get("content") or ""
+                text = build_document_text(
+                    content=data.get("content") or "",
+                    metadata=data.get("metadata", {}),
+                    inline_metadata=inline_metadata,
+                )
                 if not text.strip():
                     continue
                 records.append((text, data.get("doc_id")))

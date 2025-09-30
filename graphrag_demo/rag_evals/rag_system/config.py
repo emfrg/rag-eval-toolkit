@@ -1,42 +1,4 @@
-# # rag_system/config.py
-# from dataclasses import dataclass
-# from typing import Optional, Literal
-# from pathlib import Path
-
-
-# @dataclass
-# class RAGConfig:
-#     # Chunking
-#     chunking: bool = False
-#     chunk_size: int = 400
-#     chunk_overlap: int = 50
-
-#     # Embeddings
-#     embedding_model: Literal["text-embedding-3-small", "text-embedding-3-large"] = (
-#         "text-embedding-3-small"
-#     )
-
-#     # Retrieval
-#     vector_store_type: Literal["faiss", "chroma"] = "faiss"
-#     k_retrieve: int = 10
-#     similarity_threshold: float = 1.0  # FAISS distance threshold (lower = more similar)
-
-#     # Reranking
-#     use_reranker: bool = False
-#     reranker_model: Optional[str] = "BAAI/bge-reranker-base"
-#     rerank_threshold: float = 0.5
-#     min_docs: int = 0
-#     max_docs: int = 4
-
-#     # Generation
-#     llm_model: str = "gpt-4o-mini"
-#     temperature: float = 1
-#     max_tokens: int = 512
-
-#     # Storage
-#     cache_dir: Optional[Path] = Path("./rag_cache")
-
-
+# rag_system/config.py
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -51,7 +13,7 @@ def _as_path(value: Union[str, Path]) -> Path:
 
 
 @dataclass
-class NaiveRetrievalConfig:
+class NaiveRetrievalConfig:  # TODO: keep consistent naming with the following
     chunk_documents: bool = False
     chunk_size: int = 400
     chunk_overlap: int = 50
@@ -65,6 +27,7 @@ class NaiveRetrievalConfig:
     min_docs: int = 0
     max_docs: int = 4
     cache_dir: Path = Path("./rag_cache")
+    inline_metadata: bool = False
 
     def __post_init__(self) -> None:
         self.cache_dir = _as_path(self.cache_dir)
@@ -76,6 +39,7 @@ class LightRAGIndexingConfig:
     max_parallel_insert: int = 4
     batch_size: int = 128
     force_reindex: bool = False
+    inline_metadata: bool = False
 
     def __post_init__(self) -> None:
         self.graph_cache_dir = _as_path(self.graph_cache_dir)
@@ -99,7 +63,7 @@ class RAGConfig:
     rag_model: Literal["naive", "graphrag"] = "naive"
     llm_model: str = "gpt-4o-mini"
     temperature: float = 1.0
-    max_tokens: int = 512
+    max_tokens: int = 512  # 512
     naive: NaiveRetrievalConfig = field(default_factory=NaiveRetrievalConfig)
     graphrag: LightRAGConfig = field(default_factory=LightRAGConfig)
 

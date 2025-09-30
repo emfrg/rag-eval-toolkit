@@ -11,7 +11,7 @@ from sentence_transformers import CrossEncoder
 from .base import BaseRAGSystem, IndexReport
 from .config import RAGConfig
 from .dataset import RAGDataset
-from .document_processor import chunk_documents
+from .document_processor import build_document_text, chunk_documents
 from .prompts import STRICT_RAG_PROMPT
 
 
@@ -49,6 +49,10 @@ class NaiveRAGSystem(BaseRAGSystem):
             if cfg.chunk_documents
             else f"no_chunk_{cfg.embedding_model}"
         )
+
+        if cfg.inline_metadata:
+            suffix = f"{suffix}_meta"
+
         index_path = cfg.cache_dir / f"{dataset.name}_{suffix}"
         cfg.cache_dir.mkdir(parents=True, exist_ok=True)
 
@@ -68,7 +72,11 @@ class NaiveRAGSystem(BaseRAGSystem):
 
         documents: List[Document] = [
             Document(
-                page_content=doc["content"],
+                page_content=build_document_text(
+                    content=doc.get("content", ""),
+                    metadata=doc.get("metadata", {}),
+                    inline_metadata=cfg.inline_metadata,
+                ),
                 metadata={"doc_id": doc["doc_id"], **doc.get("metadata", {})},
             )
             for doc in corpus_docs
