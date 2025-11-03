@@ -8,6 +8,8 @@ from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 from dotenv import load_dotenv
 from langchain.schema import Document
+from langchain.prompts import ChatPromptTemplate
+from langchain_openai import ChatOpenAI
 from tqdm.auto import tqdm
 
 from .base import BaseRAGSystem, IndexReport
@@ -60,6 +62,12 @@ class LightRAGSystem(BaseRAGSystem):
         self._index_ready: bool = False
         self._index_report: Optional[IndexReport] = None
         self._loop: Optional[asyncio.AbstractEventLoop] = None
+        self._llm = ChatOpenAI(
+            model=config.llm_model,
+            temperature=config.temperature,
+            max_tokens=config.max_tokens,
+        )
+        self._prompt = ChatPromptTemplate.from_template(STRICT_RAG_PROMPT)
         if dataset:
             self._index_report = self.build_index(dataset)
 
@@ -73,26 +81,30 @@ class LightRAGSystem(BaseRAGSystem):
 
     def build_index(self, dataset: RAGDataset) -> IndexReport:
         cfg = self.config.graphrag.indexing
-        workdir_name = f"{dataset.name}_meta" if cfg.inline_metadata else dataset.name
-        workdir = cfg.graph_cache_dir / workdir_name
+        workspace = self._workspace_name(dataset, inline_metadata=cfg.inline_metadata)
+        root_dir = cfg.graph_cache_dir
+        workspace_dir = root_dir / workspace
 
-        self._workdir = workdir
+        self._workdir = workspace_dir
 
         # Decide whether a fresh index is needed before LightRAG touches the directory
-        needs_index = (
-            cfg.force_reindex or not workdir.exists() or not any(workdir.iterdir())
-        )
-        if cfg.force_reindex and workdir.exists():
-            shutil.rmtree(workdir)
+        workspace_has_files = workspace_dir.exists() and any(workspace_dir.iterdir())
+        needs_index = cfg.force_reindex or not workspace_has_files
 
-        workdir.mkdir(parents=True, exist_ok=True)
+        if cfg.force_reindex and workspace_dir.exists():
+            shutil.rmtree(workspace_dir)
+            workspace_has_files = False
+            needs_index = True
+
+        root_dir.mkdir(parents=True, exist_ok=True)
+        workspace_dir.mkdir(parents=True, exist_ok=True)
 
         records = self._load_corpus_records(
             dataset.corpus_path, inline_metadata=cfg.inline_metadata
         )
         total_docs = len(records)
 
-        self._rag = self._run_async(self._initialize_light_rag(workdir))
+        self._rag = self._run_async(self._initialize_light_rag(root_dir, workspace))
 
         ingested = 0
         if needs_index:
@@ -115,8 +127,7 @@ class LightRAGSystem(BaseRAGSystem):
     def query(self, question: str) -> Tuple[str, List[Document]]:
         context_text = self._fetch_context_text(question)
         contexts = self._parse_context_documents(context_text)
-        answer_raw = self._run_async(self._async_query_answer(question))
-        answer = self._extract_answer_text(answer_raw)
+        answer = self._generate_answer(question, contexts)
         return answer, contexts
 
     def _fetch_context_text(self, question: str) -> str:
@@ -133,9 +144,10 @@ class LightRAGSystem(BaseRAGSystem):
         assert self._rag is not None
         return self._rag
 
-    async def _initialize_light_rag(self, workdir: Path) -> LightRAG:
+    async def _initialize_light_rag(self, workdir: Path, workspace: str) -> LightRAG:
         rag = LightRAG(
             working_dir=str(workdir),
+            workspace=workspace,
             embedding_func=openai_embed,
             llm_model_func=_select_llm_func(self.config.llm_model),
             max_parallel_insert=self.config.graphrag.indexing.max_parallel_insert,
@@ -144,6 +156,13 @@ class LightRAGSystem(BaseRAGSystem):
         await initialize_pipeline_status()
         self._index_ready = True
         return rag
+
+    def _workspace_name(
+        self, dataset: Optional[RAGDataset], *, inline_metadata: bool
+    ) -> str:
+        base = dataset.name if dataset else "default"
+        suffix = "meta" if inline_metadata else "base"
+        return f"{base}_{suffix}"
 
     async def _insert_records(
         self,
@@ -184,31 +203,20 @@ class LightRAGSystem(BaseRAGSystem):
             f"LightRAG context response must be a string, got {type(result)}"
         )
 
-    async def _async_query_answer(self, question: str) -> Any:
-        param = self._query_param(only_context=False)
-        return await self._rag.aquery(question, param=param)  # type: ignore[union-attr]
-
     def _query_param(self, *, only_context: bool = False) -> QueryParam:
         cfg = self.config.graphrag.query
         params: Dict[str, Any] = {
             "mode": cfg.mode,
             "top_k": cfg.top_k,
-            "user_prompt": STRICT_RAG_PROMPT,
         }
         params["only_need_context"] = only_context
         return QueryParam(**params)
 
-    def _extract_answer_text(self, raw: Any) -> str:
-        if isinstance(raw, str):
-            return raw
-        if isinstance(raw, dict) and "answer" in raw:
-            value = raw["answer"]
-            if isinstance(value, str):
-                return value
-        raise TypeError(
-            f"Unexpected answer payload from LightRAG: {type(raw)}. "
-            "Expected a string or dict with an 'answer' field."
-        )
+    def _generate_answer(self, question: str, contexts: List[Document]) -> str:
+        context_text = "\n\n".join(doc.page_content for doc in contexts)
+        messages = self._prompt.format_messages(context=context_text, question=question)
+        response = self._llm.invoke(messages)
+        return response.content
 
     def _parse_context_documents(self, context_text: str) -> List[Document]:
         if not context_text:

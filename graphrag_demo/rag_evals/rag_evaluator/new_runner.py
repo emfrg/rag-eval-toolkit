@@ -314,6 +314,48 @@ def build_configs(
         },
     }
 
+    graphrag_top50_config: Dict[str, Any] = {
+        "rag_model": "graphrag",
+        "llm_model": "gpt-4o-mini",
+        "temperature": 1.0,
+        "max_tokens": 80,
+        "graphrag": {
+            "indexing": {
+                "graph_cache_dir": graph_cache,
+                "max_parallel_insert": 4,
+                "batch_size": 128,
+                "force_reindex": force_graphrag,
+                "inline_metadata": False,
+            },
+            "query": {
+                "mode": "hybrid",
+                "top_k": 50,
+                "summary_top_k": None,
+            },
+        },
+    }
+
+    graphrag_meta_top50_config: Dict[str, Any] = {
+        "rag_model": "graphrag",
+        "llm_model": "gpt-4o-mini",
+        "temperature": 1.0,
+        "max_tokens": 80,
+        "graphrag": {
+            "indexing": {
+                "graph_cache_dir": graph_cache,
+                "max_parallel_insert": 4,
+                "batch_size": 128,
+                "force_reindex": force_graphrag,
+                "inline_metadata": True,
+            },
+            "query": {
+                "mode": "hybrid",
+                "top_k": 50,
+                "summary_top_k": None,
+            },
+        },
+    }
+
     # graphrag_mix_config: Dict[str, Any] = {
     #     "rag_model": "graphrag",
     #     "llm_model": "gpt-4o-mini",
@@ -336,11 +378,14 @@ def build_configs(
     # }
 
     return [
-        naive_config,
+        # naive_config,
         naive_meta_config,
+        # ---
         # naive_meta_rerank_config,
         graphrag_config,
         graphrag_meta_config,
+        # graphrag_top50_config,
+        # graphrag_meta_top50_config,
         # graphrag_semantic_config,
     ]
 

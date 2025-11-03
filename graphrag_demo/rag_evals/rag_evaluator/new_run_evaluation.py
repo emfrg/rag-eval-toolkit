@@ -106,11 +106,18 @@ def main(
             click.echo(f"  Chunking: {naive_cfg.get('chunk_documents', False)}")
             click.echo(f"  k_retrieve: {naive_cfg.get('k_retrieve')}")
             click.echo(f"  Use reranker: {naive_cfg.get('use_reranker', False)}")
+            click.echo(
+                f"  Inline metadata: {naive_cfg.get('inline_metadata', False)}"
+            )
         elif rag_model == "graphrag":
             graph_cfg = config.get("graphrag", {})
             query_cfg = graph_cfg.get("query", {})
             click.echo(f"  Query mode: {query_cfg.get('mode', 'hybrid')}")
             click.echo(f"  top_k: {query_cfg.get('top_k')}")
+            indexing_cfg = graph_cfg.get("indexing", {})
+            click.echo(
+                f"  Inline metadata: {indexing_cfg.get('inline_metadata', False)}"
+            )
 
         if scores:
             click.echo("  Scores:")
