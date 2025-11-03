@@ -10,7 +10,12 @@ import pandas as pd
 from tqdm import tqdm
 
 from .evaluator import RAGEvaluator
-from rag_system import RAGConfig, RAGSystem, RAGDataset
+
+try:
+    # Preferred when running as rag_evals.rag_evaluator.*
+    from ..rag_system import RAGConfig, RAGSystem, RAGDataset
+except ImportError:  # pragma: no cover - fallback for flat execution
+    from rag_system import RAGConfig, RAGSystem, RAGDataset
 
 from ragas import SingleTurnSample, EvaluationDataset, evaluate
 

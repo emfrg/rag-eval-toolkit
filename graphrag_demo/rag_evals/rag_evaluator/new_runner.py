@@ -194,7 +194,11 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from rag_evaluator import ExperimentRunner
+try:
+    # Preferred when running within the rag_evaluator package
+    from .runner import ExperimentRunner
+except ImportError:  # pragma: no cover - fallback when executed flat
+    from rag_evaluator.runner import ExperimentRunner
 
 
 def build_configs(

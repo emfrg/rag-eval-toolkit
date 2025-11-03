@@ -16,7 +16,11 @@ from ragas.metrics import (
     ContextEntityRecall,
 )
 
-from rag_system import RAGSystem, RAGDataset
+try:
+    # Preferred when running as part of the rag_evals package
+    from ..rag_system import RAGSystem, RAGDataset
+except ImportError:  # pragma: no cover - fallback for flat execution
+    from rag_system import RAGSystem, RAGDataset
 
 
 class RAGEvaluator:
