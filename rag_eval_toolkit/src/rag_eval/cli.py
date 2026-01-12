@@ -333,5 +333,242 @@ def dataset_sample(path: str, num: int, output: str, seed: int) -> None:
     console.print(f"[green]Saved {len(sampled)} samples to {output}[/green]")
 
 
+@dataset.command(name="build")
+@click.option(
+    "--corpus",
+    "-c",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to corpus JSONL file",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output path for generated dataset",
+)
+@click.option("-n", "--num", type=int, default=50, help="Number of questions to generate")
+@click.option(
+    "--types",
+    "-t",
+    multiple=True,
+    default=["factoid"],
+    help="Question types to generate (factoid, multi_hop)",
+)
+@click.option("--model", default="gpt-4o-mini", help="LLM model to use")
+@click.option("--workers", type=int, default=5, help="Number of parallel workers")
+@click.option("--seed", type=int, default=None, help="Random seed")
+def dataset_build(
+    corpus: str,
+    output: str,
+    num: int,
+    types: tuple[str, ...],
+    model: str,
+    workers: int,
+    seed: int | None,
+) -> None:
+    """Generate an evaluation dataset from a corpus.
+
+    Uses LLM to generate QA pairs from corpus documents.
+
+    Examples:
+
+        # Generate 50 factoid questions
+        rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50
+
+        # Generate mix of factoid and multi-hop questions
+        rag-eval dataset build -c corpus.jsonl -o questions.jsonl -t factoid -t multi_hop
+    """
+    from rich.console import Console
+
+    from rag_eval.dataset.corpus import Corpus
+    from rag_eval.dataset.builder import generate_eval_dataset
+
+    console = Console()
+
+    console.print(f"[blue]Loading corpus from {corpus}...[/blue]")
+    corpus_data = Corpus.from_jsonl(corpus)
+    console.print(f"  Loaded {len(corpus_data)} documents")
+
+    console.print(f"\n[green]Generating {num} questions...[/green]")
+    console.print(f"  Types: {', '.join(types)}")
+    console.print(f"  Model: {model}")
+
+    eval_dataset = generate_eval_dataset(
+        corpus_data,
+        num_questions=num,
+        question_types=list(types),
+        model=model,
+        max_workers=workers,
+        seed=seed,
+    )
+
+    eval_dataset.to_jsonl(output)
+    console.print(f"\n[green]Saved {len(eval_dataset)} questions to {output}[/green]")
+
+
+@dataset.command(name="adapt")
+@click.option(
+    "--source",
+    "-s",
+    required=True,
+    help="HuggingFace dataset name (e.g., 'yixuantt/MultiHopRAG')",
+)
+@click.option(
+    "--output-dir",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output directory for corpus.jsonl and questions.jsonl",
+)
+@click.option(
+    "--type",
+    "-t",
+    "dataset_type",
+    type=click.Choice(["multi_hop", "qa"]),
+    default="multi_hop",
+    help="Dataset type for processing",
+)
+@click.option("--split", default="train", help="Dataset split to load")
+def dataset_adapt(
+    source: str,
+    output_dir: str,
+    dataset_type: str,
+    split: str,
+) -> None:
+    """Adapt a HuggingFace dataset to our format.
+
+    Downloads and converts HuggingFace datasets to Corpus + EvalDataset.
+
+    Examples:
+
+        # Adapt MultiHopRAG dataset
+        rag-eval dataset adapt -s yixuantt/MultiHopRAG -o ./data/
+
+        # Adapt a SQUAD-like dataset
+        rag-eval dataset adapt -s squad -t qa -o ./data/
+    """
+    from pathlib import Path
+
+    from rich.console import Console
+
+    from rag_eval.dataset.adapter import adapt_huggingface_dataset
+
+    console = Console()
+    output_path = Path(output_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    console.print(f"[blue]Adapting dataset: {source}[/blue]")
+    console.print(f"  Type: {dataset_type}")
+    console.print(f"  Split: {split}")
+
+    corpus, eval_dataset = adapt_huggingface_dataset(
+        source, dataset_type=dataset_type, split=split
+    )
+
+    corpus_path = output_path / "corpus.jsonl"
+    questions_path = output_path / "questions.jsonl"
+
+    corpus.to_jsonl(corpus_path)
+    eval_dataset.to_jsonl(questions_path)
+
+    console.print(f"\n[green]Saved {len(corpus)} documents to {corpus_path}[/green]")
+    console.print(f"[green]Saved {len(eval_dataset)} questions to {questions_path}[/green]")
+
+
+@dataset.command(name="score")
+@click.option(
+    "--dataset",
+    "-d",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to evaluation dataset JSONL file",
+)
+@click.option(
+    "--corpus",
+    "-c",
+    type=click.Path(exists=True),
+    help="Path to corpus JSONL (for groundedness scoring)",
+)
+@click.option(
+    "--output",
+    "-o",
+    required=True,
+    type=click.Path(),
+    help="Output path for filtered dataset",
+)
+@click.option("--model", default="gpt-4o-mini", help="LLM model for scoring")
+@click.option("--workers", type=int, default=5, help="Parallel workers")
+@click.option("--groundedness-min", type=int, default=3, help="Min groundedness score (1-5)")
+@click.option("--relevance-min", type=int, default=3, help="Min relevance score (1-5)")
+@click.option("--standalone-min", type=int, default=3, help="Min standalone score (1-5)")
+@click.option("--complexity-min", type=int, default=2, help="Min complexity score (1-5)")
+def dataset_score(
+    dataset: str,
+    corpus: str | None,
+    output: str,
+    model: str,
+    workers: int,
+    groundedness_min: int,
+    relevance_min: int,
+    standalone_min: int,
+    complexity_min: int,
+) -> None:
+    """Score and filter dataset by quality.
+
+    Uses LLM-based critique to evaluate question quality across multiple
+    dimensions and filters out low-quality questions.
+
+    Examples:
+
+        # Score with default thresholds
+        rag-eval dataset score -d questions.jsonl -o filtered.jsonl
+
+        # Score with corpus (enables groundedness)
+        rag-eval dataset score -d questions.jsonl -c corpus.jsonl -o filtered.jsonl
+
+        # Custom thresholds
+        rag-eval dataset score -d questions.jsonl -o filtered.jsonl --complexity-min 4
+    """
+    from rich.console import Console
+
+    from rag_eval.dataset.corpus import Corpus
+    from rag_eval.dataset.eval_dataset import EvalDataset
+    from rag_eval.dataset.critique import score_eval_dataset
+
+    console = Console()
+
+    console.print(f"[blue]Loading dataset from {dataset}...[/blue]")
+    eval_dataset = EvalDataset.from_jsonl(dataset)
+    console.print(f"  Loaded {len(eval_dataset)} questions")
+
+    corpus_data = None
+    if corpus:
+        console.print(f"[blue]Loading corpus from {corpus}...[/blue]")
+        corpus_data = Corpus.from_jsonl(corpus)
+        console.print(f"  Loaded {len(corpus_data)} documents")
+
+    console.print(f"\n[green]Scoring questions...[/green]")
+    console.print(f"  Model: {model}")
+    console.print(f"  Thresholds: groundedness>={groundedness_min}, relevance>={relevance_min}, "
+                  f"standalone>={standalone_min}, complexity>={complexity_min}")
+
+    filtered_dataset, scores = score_eval_dataset(
+        eval_dataset,
+        corpus=corpus_data,
+        model=model,
+        max_workers=workers,
+        groundedness_min=groundedness_min,
+        relevance_min=relevance_min,
+        standalone_min=standalone_min,
+        complexity_min=complexity_min,
+    )
+
+    filtered_dataset.to_jsonl(output)
+    console.print(f"\n[green]Saved {len(filtered_dataset)}/{len(eval_dataset)} "
+                  f"questions to {output}[/green]")
+
+
 if __name__ == "__main__":
     main()
