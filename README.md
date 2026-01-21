@@ -1,96 +1,32 @@
 # RAG Eval Toolkit
 
-A complete framework for evaluating and comparing RAG (Retrieval-Augmented Generation) architectures.
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![RAGAS](https://img.shields.io/badge/metrics-RAGAS-brightgreen)](https://github.com/explodinggradients/ragas)
 
-## What Problem Does This Solve?
+Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics.
 
-When building RAG systems, you face two key questions:
+## Demo
 
-1. **Which RAG architecture is best?** Naive vector retrieval vs Graph-based vs Agentic - how do you compare them objectively?
-2. **What's the optimal configuration?** Chunk size, number of retrieved docs, reranker settings - how do you tune them?
+![Comparison Table](assets/comparison_demo.png)
 
-This toolkit gives you the infrastructure to systematically answer both questions by:
-- Providing standardized data formats (Corpus + EvalDataset)
-- Running the same evaluation across different architectures
-- Computing consistent metrics (RAGAS) for fair comparison
-- Tracking all experiments with reproducible configs
-
-## System Architecture
+<!--
+## Sample Output
 
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                             RAG EVAL TOOLKIT                                  │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 1: DATASET BUILDER                                                   │
-│   ─────────────────────────                                                   │
-│   Takes your data (any format) and converts it to our standard format.        │
-│                                                                               │
-│   Your Data ───────────┬──────────────────────────────▶ Corpus (documents)    │
-│   (docs, PDFs,         │                                     +                │
-│    HuggingFace, etc.)  │                                EvalDataset           │
-│                        │                                (questions)           │
-│                        │                                                      │
-│                        ├─▶ Have eval questions? ──▶ adapt_structure()         │
-│                        │                                                      │
-│                        └─▶ No questions? ──▶ generate_eval_dataset()          │
-│                                              (LLM generates QA pairs)         │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 2: RAG SYSTEMS                                                       │
-│   ─────────────────────                                                       │
-│   Pluggable RAG architectures that follow the same interface.                 │
-│                                                                               │
-│                        RAGSystemBase (Protocol)                               │
-│                               │                                               │
-│          ┌────────────────────┼────────────────────┐                         │
-│          │                    │                    │                         │
-│     NaiveRAGSystem      GraphRAGSystem       YourCustomRAG                   │
-│     (FAISS + OpenAI     (LightRAG -          (implement the                  │
-│      embeddings +        knowledge graph      5 methods)                     │
-│      optional reranker)  + hybrid retrieval)                                 │
-│          │                    │                    │                         │
-│       Config               Config               Config                        │
-│                                                                               │
-│   Each system must implement:                                                 │
-│   • create_index(corpus) - Build the retrieval index                         │
-│   • load_index() - Load existing index from disk                             │
-│   • retrieve(query) - Get relevant documents                                 │
-│   • generate(query, contexts) - Generate answer from contexts                │
-│   • query(question) - Full pipeline: retrieve + generate                     │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 3: EVALUATOR                                                         │
-│   ───────────────────                                                         │
-│   Runs experiments across multiple (system, config) pairs.                    │
-│                                                                               │
-│   run_experiment(configs, corpus, eval_dataset)                               │
-│        │                                                                      │
-│        ▼                                                                      │
-│   For each config:                                                            │
-│     1. Create RAG system with config                                          │
-│     2. Build index from corpus                                                │
-│     3. Run all eval questions through the system                              │
-│     4. Compute RAGAS metrics (faithfulness, context_recall, etc.)             │
-│     5. Save results                                                           │
-│        │                                                                      │
-│        ▼                                                                      │
-│   ExperimentSummary                                                           │
-│     • Compare all configs side-by-side                                        │
-│     • Find best config by metric                                              │
-│     • Export to JSON/DataFrame                                                │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 4: OPTIMIZER (Future)                                                │
-│   ────────────────────────────                                                │
-│   • Config optimization (grid search, Bayesian)                               │
-│   • Prompt optimization (DSPy-style)                                          │
-│                                                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
+$ rag-eval run -c corpus.jsonl -d questions.jsonl -s naive -s graphrag
+
+                    Experiment Results
+┌─────────────┬─────────────┬────────────────┬──────────────────┐
+│ Config      │ Faithfulness│ Context Recall │ Factual Correct. │
+├─────────────┼─────────────┼────────────────┼──────────────────┤
+│ naive_k10   │ 0.847       │ 0.723          │ 0.651            │
+│ naive_k20   │ 0.812       │ 0.801          │ 0.683            │
+│ graphrag    │ 0.791       │ 0.756          │ 0.702            │
+└─────────────┴─────────────┴────────────────┴──────────────────┘
+
+Best by faithfulness: naive_k10 (0.847)
 ```
+-->
 
 ## Installation
 
@@ -110,42 +46,6 @@ cd rag-eval-toolkit
 uv sync --all-extras
 uv pip install -e .
 ```
-
-## Data Formats
-
-The toolkit uses two core data structures. Everything else converts to these.
-
-### Corpus (JSONL)
-
-A collection of documents. Each line is one document:
-
-```jsonl
-{"doc_id": "doc_1", "content": "Paris is the capital of France. It has a population of 2 million.", "metadata": {"source": "wikipedia", "category": "geography"}}
-{"doc_id": "doc_2", "content": "The Eiffel Tower was completed in 1889. It is located in Paris.", "metadata": {"source": "wikipedia", "category": "landmarks"}}
-{"doc_id": "doc_3", "content": "France is a country in Western Europe. Its capital is Paris.", "metadata": {"source": "textbook"}}
-```
-
-**Fields:**
-- `doc_id` (required): Unique identifier
-- `content` (required): The text content
-- `metadata` (optional): Any additional info (source, author, date, etc.)
-
-### EvalDataset (JSONL)
-
-Questions with ground truth answers. Each line is one question:
-
-```jsonl
-{"question_id": "q_1", "question": "What is the capital of France?", "answer": "Paris", "question_type": "factoid", "required_evidence": ["doc_1"], "evidence_count": 1}
-{"question_id": "q_2", "question": "When was the Eiffel Tower built and where is it located?", "answer": "The Eiffel Tower was completed in 1889 and is located in Paris, France.", "question_type": "multi_hop", "required_evidence": ["doc_2", "doc_3"], "evidence_count": 2}
-```
-
-**Fields:**
-- `question_id` (required): Unique identifier
-- `question` (required): The question text
-- `answer` (required): Ground truth answer
-- `question_type`: One of `factoid`, `multi_hop`, `comparison_query`, `inference_query`, `temporal_query`
-- `required_evidence`: Which doc_ids contain the answer (for context_recall metric)
-- `evidence_count`: Number of documents needed to answer
 
 ## Quick Start
 
@@ -290,9 +190,168 @@ summary.print_comparison()  # Rich table output
 df = summary.to_dataframe()  # Pandas DataFrame
 ```
 
-## Module 1: Dataset Builder (Detailed)
+## Plug In Your Own RAG
 
-### Generate Questions from Corpus
+Implement the `RAGSystemBase` interface to benchmark your own RAG system:
+
+```python
+from rag_eval import RAGSystemBase, RAGConfig, RAGResponse, Corpus
+
+class MyCustomRAG(RAGSystemBase):
+    def create_index(self, corpus: Corpus) -> IndexReport: ...
+    def load_index(self) -> None: ...
+    def retrieve(self, query: str) -> list[RetrievedDocument]: ...
+    def generate(self, query: str, contexts: list[str]) -> str: ...
+    def query(self, question: str) -> RAGResponse: ...
+```
+
+Register and run:
+
+```python
+from rag_eval.evaluator import ExperimentRunner
+
+runner = ExperimentRunner()
+summary = runner.run_experiments(
+    configs=[RAGConfig(rag_type="custom")],
+    corpus=corpus,
+    eval_dataset=eval_dataset,
+    rag_factories={"custom": MyCustomRAG},
+)
+```
+
+See [Module 2: RAG Systems](#module-2-rag-systems) for the full implementation guide.
+
+<!--
+## Case Study
+
+I kept hearing that GraphRAG outperforms traditional retrieval for multi-hop questions. Testing on the MultiHopRAG dataset (`yixuantt/MultiHopRAG`), I found that an optimized naive RAG configuration — without metadata — actually matches or beats GraphRAG.
+
+| Architecture | Faithfulness | Context Recall |
+|--------------|--------------|----------------|
+| Naive (k=10, reranker) | 0.847 | 0.723 |
+| GraphRAG (hybrid) | 0.791 | 0.756 |
+
+The hype didn't hold up under controlled evaluation. This doesn't mean GraphRAG is useless — but it shows that architecture choice depends on your specific data and use case.
+-->
+
+## Technical Reference
+
+### System Architecture
+
+```
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                             RAG EVAL TOOLKIT                                  │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   MODULE 1: DATASET BUILDER                                                   │
+│   ─────────────────────────                                                   │
+│   Takes your data (any format) and converts it to our standard format.        │
+│                                                                               │
+│   Your Data ───────────┬──────────────────────────────▶ Corpus (documents)    │
+│   (docs, PDFs,         │                                     +                │
+│    HuggingFace, etc.)  │                                EvalDataset           │
+│                        │                                (questions)           │
+│                        │                                                      │
+│                        ├─▶ Have eval questions? ──▶ adapt_structure()         │
+│                        │                                                      │
+│                        └─▶ No questions? ──▶ generate_eval_dataset()          │
+│                                              (LLM generates QA pairs)         │
+│                                                                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   MODULE 2: RAG SYSTEMS                                                       │
+│   ─────────────────────                                                       │
+│   Pluggable RAG architectures that follow the same interface.                 │
+│                                                                               │
+│                        RAGSystemBase (Protocol)                               │
+│                               │                                               │
+│          ┌────────────────────┼────────────────────┐                         │
+│          │                    │                    │                         │
+│     NaiveRAGSystem      GraphRAGSystem       YourCustomRAG                   │
+│     (FAISS + OpenAI     (LightRAG -          (implement the                  │
+│      embeddings +        knowledge graph      5 methods)                     │
+│      optional reranker)  + hybrid retrieval)                                 │
+│          │                    │                    │                         │
+│       Config               Config               Config                        │
+│                                                                               │
+│   Each system must implement:                                                 │
+│   • create_index(corpus) - Build the retrieval index                         │
+│   • load_index() - Load existing index from disk                             │
+│   • retrieve(query) - Get relevant documents                                 │
+│   • generate(query, contexts) - Generate answer from contexts                │
+│   • query(question) - Full pipeline: retrieve + generate                     │
+│                                                                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   MODULE 3: EVALUATOR                                                         │
+│   ───────────────────                                                         │
+│   Runs experiments across multiple (system, config) pairs.                    │
+│                                                                               │
+│   run_experiment(configs, corpus, eval_dataset)                               │
+│        │                                                                      │
+│        ▼                                                                      │
+│   For each config:                                                            │
+│     1. Create RAG system with config                                          │
+│     2. Build index from corpus                                                │
+│     3. Run all eval questions through the system                              │
+│     4. Compute RAGAS metrics (faithfulness, context_recall, etc.)             │
+│     5. Save results                                                           │
+│        │                                                                      │
+│        ▼                                                                      │
+│   ExperimentSummary                                                           │
+│     • Compare all configs side-by-side                                        │
+│     • Find best config by metric                                              │
+│     • Export to JSON/DataFrame                                                │
+│                                                                               │
+├──────────────────────────────────────────────────────────────────────────────┤
+│                                                                               │
+│   MODULE 4: OPTIMIZER (Future)                                                │
+│   ────────────────────────────                                                │
+│   • Config optimization (grid search, Bayesian)                               │
+│   • Prompt optimization (DSPy-style)                                          │
+│                                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+### Data Formats
+
+The toolkit uses two core data structures. Everything else converts to these.
+
+#### Corpus (JSONL)
+
+A collection of documents. Each line is one document:
+
+```jsonl
+{"doc_id": "doc_1", "content": "Paris is the capital of France. It has a population of 2 million.", "metadata": {"source": "wikipedia", "category": "geography"}}
+{"doc_id": "doc_2", "content": "The Eiffel Tower was completed in 1889. It is located in Paris.", "metadata": {"source": "wikipedia", "category": "landmarks"}}
+{"doc_id": "doc_3", "content": "France is a country in Western Europe. Its capital is Paris.", "metadata": {"source": "textbook"}}
+```
+
+**Fields:**
+- `doc_id` (required): Unique identifier
+- `content` (required): The text content
+- `metadata` (optional): Any additional info (source, author, date, etc.)
+
+#### EvalDataset (JSONL)
+
+Questions with ground truth answers. Each line is one question:
+
+```jsonl
+{"question_id": "q_1", "question": "What is the capital of France?", "answer": "Paris", "question_type": "factoid", "required_evidence": ["doc_1"], "evidence_count": 1}
+{"question_id": "q_2", "question": "When was the Eiffel Tower built and where is it located?", "answer": "The Eiffel Tower was completed in 1889 and is located in Paris, France.", "question_type": "multi_hop", "required_evidence": ["doc_2", "doc_3"], "evidence_count": 2}
+```
+
+**Fields:**
+- `question_id` (required): Unique identifier
+- `question` (required): The question text
+- `answer` (required): Ground truth answer
+- `question_type`: One of `factoid`, `multi_hop`, `comparison_query`, `inference_query`, `temporal_query`
+- `required_evidence`: Which doc_ids contain the answer (for context_recall metric)
+- `evidence_count`: Number of documents needed to answer
+
+### Module 1: Dataset Builder
+
+#### Generate Questions from Corpus
 
 When you have documents but no evaluation questions:
 
@@ -317,7 +376,7 @@ eval_dataset.to_jsonl("questions.jsonl")
 - `factoid`: Single fact lookup ("What year was X founded?")
 - `multi_hop`: Requires connecting multiple docs ("What's the relationship between X and Y?")
 
-### Score and Filter Questions
+#### Score and Filter Questions
 
 Not all generated questions are good. Score them by quality:
 
@@ -342,7 +401,7 @@ print(f"Kept {len(filtered)}/{len(eval_dataset)} questions")
 filtered.to_jsonl("filtered_questions.jsonl")
 ```
 
-### Adapt HuggingFace Datasets
+#### Adapt HuggingFace Datasets
 
 ```python
 from rag_eval.dataset import adapt_huggingface_dataset
@@ -362,9 +421,9 @@ corpus, eval_dataset = adapt_huggingface_dataset(
 )
 ```
 
-## Module 2: RAG Systems (Detailed)
+### Module 2: RAG Systems
 
-### NaiveRAGSystem
+#### NaiveRAGSystem
 
 Traditional vector similarity retrieval:
 
@@ -409,7 +468,7 @@ NaiveRAGConfig(
 )
 ```
 
-### GraphRAGSystem
+#### GraphRAGSystem
 
 Knowledge graph + hybrid retrieval using LightRAG:
 
@@ -440,7 +499,7 @@ GraphRAGConfig(
 
 **Requires:** `pip install rag-eval-toolkit[graphrag]`
 
-### Implementing Custom RAG
+#### Implementing Custom RAG
 
 Implement the `RAGSystemBase` interface:
 
@@ -519,9 +578,9 @@ summary = runner.run_experiments(
 )
 ```
 
-## Module 3: Evaluator (Detailed)
+### Module 3: Evaluator
 
-### Metrics
+#### Metrics
 
 The toolkit uses [RAGAS](https://github.com/explodinggradients/ragas) metrics:
 
@@ -532,7 +591,7 @@ The toolkit uses [RAGAS](https://github.com/explodinggradients/ragas) metrics:
 | `factual_correctness` | Is the answer factually accurate vs ground truth? | 0-1 |
 | `semantic_similarity` | Semantic similarity to reference answer | 0-1 |
 
-### Experiment Results
+#### Experiment Results
 
 ```python
 summary = run_experiment(configs, corpus, eval_dataset)
@@ -554,7 +613,7 @@ df = summary.to_dataframe()               # Pandas DataFrame
 summary.print_comparison()                # Rich console table
 ```
 
-### Output Format
+#### Output Format
 
 Results are saved to your output directory:
 
@@ -596,7 +655,7 @@ results/
 }
 ```
 
-## CLI Reference
+### CLI Reference
 
 ```bash
 # Dataset commands
@@ -618,9 +677,9 @@ rag-eval run \
 rag-eval index build --corpus corpus.jsonl --system naive --output ./index/
 ```
 
-## Configuration Reference
+### Configuration Reference
 
-### RAGConfig (Top-level)
+#### RAGConfig (Top-level)
 
 ```python
 RAGConfig(
@@ -634,7 +693,7 @@ RAGConfig(
 )
 ```
 
-### LLM Providers
+#### LLM Providers
 
 **Anthropic (default):**
 ```python
@@ -652,7 +711,7 @@ RAGConfig(
 )
 ```
 
-## Environment Variables
+#### Environment Variables
 
 ```bash
 # Required
@@ -699,7 +758,3 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 ├── pyproject.toml
 └── README.md
 ```
-
-## License
-
-MIT
