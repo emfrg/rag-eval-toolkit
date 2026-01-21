@@ -49,6 +49,8 @@ uv sync --all-extras
 uv pip install -e .
 ```
 
+---
+
 ## Quick Start
 
 ### 1. Prepare Your Data
@@ -192,6 +194,8 @@ summary.print_comparison()  # Rich table output
 df = summary.to_dataframe()  # Pandas DataFrame
 ```
 
+---
+
 ## Plug In Your Own RAG
 
 Implement the `RAGSystemBase` interface to benchmark your own RAG system:
@@ -223,6 +227,8 @@ summary = runner.run_experiments(
 
 See [Module 2: RAG Systems](#module-2-rag-systems) for the full implementation guide.
 
+---
+
 <!--
 ## Case Study
 
@@ -237,83 +243,6 @@ The hype didn't hold up under controlled evaluation. This doesn't mean GraphRAG 
 -->
 
 ## Technical Reference
-
-### System Architecture
-
-```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│                             RAG EVAL TOOLKIT                                  │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 1: DATASET BUILDER                                                   │
-│   ─────────────────────────                                                   │
-│   Takes your data (any format) and converts it to our standard format.        │
-│                                                                               │
-│   Your Data ───────────┬──────────────────────────────▶ Corpus (documents)    │
-│   (docs, PDFs,         │                                     +                │
-│    HuggingFace, etc.)  │                                EvalDataset           │
-│                        │                                (questions)           │
-│                        │                                                      │
-│                        ├─▶ Have eval questions? ──▶ adapt_structure()         │
-│                        │                                                      │
-│                        └─▶ No questions? ──▶ generate_eval_dataset()          │
-│                                              (LLM generates QA pairs)         │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 2: RAG SYSTEMS                                                       │
-│   ─────────────────────                                                       │
-│   Pluggable RAG architectures that follow the same interface.                 │
-│                                                                               │
-│                        RAGSystemBase (Protocol)                               │
-│                               │                                               │
-│          ┌────────────────────┼────────────────────┐                         │
-│          │                    │                    │                         │
-│     NaiveRAGSystem      GraphRAGSystem       YourCustomRAG                   │
-│     (FAISS + OpenAI     (LightRAG -          (implement the                  │
-│      embeddings +        knowledge graph      5 methods)                     │
-│      optional reranker)  + hybrid retrieval)                                 │
-│          │                    │                    │                         │
-│       Config               Config               Config                        │
-│                                                                               │
-│   Each system must implement:                                                 │
-│   • create_index(corpus) - Build the retrieval index                         │
-│   • load_index() - Load existing index from disk                             │
-│   • retrieve(query) - Get relevant documents                                 │
-│   • generate(query, contexts) - Generate answer from contexts                │
-│   • query(question) - Full pipeline: retrieve + generate                     │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 3: EVALUATOR                                                         │
-│   ───────────────────                                                         │
-│   Runs experiments across multiple (system, config) pairs.                    │
-│                                                                               │
-│   run_experiment(configs, corpus, eval_dataset)                               │
-│        │                                                                      │
-│        ▼                                                                      │
-│   For each config:                                                            │
-│     1. Create RAG system with config                                          │
-│     2. Build index from corpus                                                │
-│     3. Run all eval questions through the system                              │
-│     4. Compute RAGAS metrics (faithfulness, context_recall, etc.)             │
-│     5. Save results                                                           │
-│        │                                                                      │
-│        ▼                                                                      │
-│   ExperimentSummary                                                           │
-│     • Compare all configs side-by-side                                        │
-│     • Find best config by metric                                              │
-│     • Export to JSON/DataFrame                                                │
-│                                                                               │
-├──────────────────────────────────────────────────────────────────────────────┤
-│                                                                               │
-│   MODULE 4: OPTIMIZER (Future)                                                │
-│   ────────────────────────────                                                │
-│   • Config optimization (grid search, Bayesian)                               │
-│   • Prompt optimization (DSPy-style)                                          │
-│                                                                               │
-└──────────────────────────────────────────────────────────────────────────────┘
-```
 
 ### Data Formats
 
@@ -722,6 +651,8 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 
 # The toolkit auto-loads .env files via python-dotenv
 ```
+
+---
 
 ## Project Structure
 
