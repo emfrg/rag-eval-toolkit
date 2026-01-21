@@ -5,9 +5,11 @@
 
 Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics.
 
+<!--
 ## Demo
 
 ![Comparison Table](assets/comparison_demo.png)
+-->
 
 <!--
 ## Sample Output
