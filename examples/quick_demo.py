@@ -8,7 +8,6 @@ This runs the FULL pipeline in ~1-2 minutes using:
 - No reranker (faster)
 
 Usage:
-    cd rag_eval_toolkit
     uv run python examples/quick_demo.py
 """
 
