@@ -56,6 +56,22 @@ class AnswerRecord:
             },
         }
 
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "AnswerRecord":
+        """Create from dictionary (reverse of to_dict)."""
+        return cls(
+            question_id=data["question_id"],
+            question=data["question"],
+            question_type=data["question_type"],
+            evidence_count=data["evidence_count"],
+            model_response=data["model"]["response"],
+            retrieved_evidence=data["model"]["retrieved_evidence"],
+            retrieved_evidence_texts=data["model"]["retrieved_evidence_texts"],
+            ground_truth_answer=data["ground_truth"]["answer"],
+            required_evidence=data["ground_truth"]["required_evidence"],
+            required_evidence_texts=data["ground_truth"]["required_evidence_texts"],
+        )
+
 
 @dataclass
 class EvaluationResult:
@@ -103,6 +119,7 @@ class ExperimentResult:
         config_sig: Unique signature/hash of the config.
         config: The RAG configuration used.
         scores: Evaluation scores.
+        num_samples: Number of samples evaluated.
         answers_file: Path to the answers JSONL file.
         timestamp: When the experiment was run.
     """
@@ -111,6 +128,7 @@ class ExperimentResult:
     config_sig: str
     config: dict[str, Any]
     scores: dict[str, float]
+    num_samples: int = 0
     answers_file: str | None = None
     timestamp: str = field(default_factory=lambda: datetime.now().isoformat())
 
@@ -121,6 +139,7 @@ class ExperimentResult:
             "config_sig": self.config_sig,
             "config": self.config,
             "scores": self.scores,
+            "num_samples": self.num_samples,
             "answers_file": self.answers_file,
             "timestamp": self.timestamp,
         }
@@ -133,6 +152,7 @@ class ExperimentResult:
             config_sig=data["config_sig"],
             config=data["config"],
             scores=data["scores"],
+            num_samples=data.get("num_samples", 0),
             answers_file=data.get("answers_file"),
             timestamp=data.get("timestamp", datetime.now().isoformat()),
         )

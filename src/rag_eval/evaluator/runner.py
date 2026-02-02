@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
@@ -15,6 +16,7 @@ if TYPE_CHECKING:
 
 from rag_eval.evaluator.metrics import RAGEvaluator
 from rag_eval.evaluator.results import ExperimentResult, ExperimentSummary
+from rag_eval.evaluator.tracking import is_tracking_available, log_experiment
 
 logger = logging.getLogger(__name__)
 
@@ -91,7 +93,12 @@ class ExperimentRunner:
             evaluator: RAGEvaluator instance. If None, uses default metrics.
         """
         self.output_dir = Path(output_dir)
+        self.checkpoint_dir = self.output_dir / "checkpoints"
         self.evaluator = evaluator or RAGEvaluator()
+
+        # Create directories
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     def run_experiments(
         self,
@@ -99,6 +106,9 @@ class ExperimentRunner:
         corpus: Corpus,
         eval_dataset: EvalDataset,
         rag_factories: dict[str, RAGSystemFactory] | None = None,
+        recreate: bool = False,
+        tracking: bool = True,
+        experiment_name: str = "rag-eval",
     ) -> ExperimentSummary:
         """Run experiments for multiple configurations.
 
@@ -108,40 +118,75 @@ class ExperimentRunner:
             eval_dataset: Evaluation dataset.
             rag_factories: Optional dict mapping rag_type to factory function.
                           If not provided, uses default factories.
+            recreate: If True, ignore existing checkpoints and start fresh.
+            tracking: If True, log experiments to MLflow (if available).
+            experiment_name: MLflow experiment name.
 
         Returns:
             ExperimentSummary with all results.
         """
-        summary = ExperimentSummary(
-            corpus_name=corpus.name,
-            dataset_name=eval_dataset.name,
-        )
+        # Load existing summary if present (to append, not overwrite)
+        summary_path = self.output_dir / "summary.json"
+        if summary_path.exists():
+            logger.info(f"Loading existing summary from {summary_path}")
+            summary = ExperimentSummary.load(summary_path)
+            # Update corpus/dataset name if different
+            summary.corpus_name = corpus.name
+            summary.dataset_name = eval_dataset.name
+        else:
+            summary = ExperimentSummary(
+                corpus_name=corpus.name,
+                dataset_name=eval_dataset.name,
+            )
+
+        # Track existing config signatures to avoid duplicates
+        existing_sigs = {r.config_sig for r in summary.results}
 
         for idx, config in enumerate(configs):
+            config_sig = config.get_config_signature()
+
             logger.info(f"\n{'='*60}")
             logger.info(f"Experiment {idx + 1}/{len(configs)}")
-            logger.info(f"Config: {config.rag_type}, sig={config.get_config_signature()}")
+            logger.info(f"Config: {config.rag_type}, sig={config_sig}")
             logger.info(f"{'='*60}")
 
+            # Skip if this config was already run (unless recreate=True)
+            if config_sig in existing_sigs and not recreate:
+                logger.info(f"Skipping {config_sig} - already in summary (use --recreate to re-run)")
+                continue
+
             try:
-                result = self.run_single_experiment(
+                result, answers_path = self.run_single_experiment(
                     config=config,
                     corpus=corpus,
                     eval_dataset=eval_dataset,
-                    config_id=idx,
+                    config_id=config_sig,  # Use config_sig as ID for consistency
                     rag_factories=rag_factories,
+                    recreate=recreate,
                 )
+
+                # Remove old result if re-running
+                if config_sig in existing_sigs:
+                    summary.results = [r for r in summary.results if r.config_sig != config_sig]
+
                 summary.add_result(result)
+                existing_sigs.add(config_sig)
                 logger.info(f"Scores: {result.scores}")
+
+                # Save summary after each experiment (checkpoint for interruption recovery)
+                summary.save(summary_path)
+
+                # Log to MLflow if tracking is enabled
+                if tracking and is_tracking_available():
+                    log_experiment(config, result, answers_path, experiment_name)
 
             except Exception as e:
                 logger.error(f"Experiment {idx} failed: {e}")
                 continue
 
-        # Save summary
-        summary_path = self.output_dir / "summary.json"
+        # Save summary (appends to existing)
         summary.save(summary_path)
-        logger.info(f"Saved summary to {summary_path}")
+        logger.info(f"Saved summary to {summary_path} ({len(summary.results)} total experiments)")
 
         return summary
 
@@ -152,7 +197,8 @@ class ExperimentRunner:
         eval_dataset: EvalDataset,
         config_id: int | str = 0,
         rag_factories: dict[str, RAGSystemFactory] | None = None,
-    ) -> ExperimentResult:
+        recreate: bool = False,
+    ) -> tuple[ExperimentResult, Path]:
         """Run a single experiment with one configuration.
 
         Args:
@@ -161,9 +207,10 @@ class ExperimentRunner:
             eval_dataset: Evaluation dataset.
             config_id: Identifier for this configuration.
             rag_factories: Optional dict mapping rag_type to factory function.
+            recreate: If True, ignore existing checkpoints and start fresh.
 
         Returns:
-            ExperimentResult with scores and metadata.
+            Tuple of (ExperimentResult, answers_path).
         """
         # Get or create RAG system factory
         if rag_factories and config.rag_type in rag_factories:
@@ -183,29 +230,42 @@ class ExperimentRunner:
             f"reused_existing={index_report.reused_existing}"
         )
 
-        # Run evaluation
+        # Run evaluation with checkpointing and parallel processing
+        config_sig = config.get_config_signature()
+
+        # GraphRAG doesn't support parallel queries - force sequential
+        eval_config = config.eval
+        if config.rag_type == "graphrag":
+            logger.info("GraphRAG: using sequential queries (max_workers=1)")
+            eval_config = replace(config.eval, max_workers=1)
+
         logger.info("Running evaluation...")
         eval_result = self.evaluator.evaluate(
             rag_system=rag_system,
             corpus=corpus,
             eval_dataset=eval_dataset,
+            checkpoint_dir=self.checkpoint_dir,
+            config_sig=config_sig,
+            eval_config=eval_config,
+            recreate=recreate,
         )
 
         # Save answers
-        config_sig = config.get_config_signature()
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         answers_file = f"{config_sig}__{timestamp}.jsonl"
         answers_path = self.output_dir / "answers" / answers_file
         eval_result.save_answers(answers_path)
         logger.info(f"Saved answers to {answers_path}")
 
-        return ExperimentResult(
+        result = ExperimentResult(
             config_id=config_id,
             config_sig=config_sig,
             config=config.to_dict(),
             scores=eval_result.scores,
+            num_samples=eval_result.num_samples,
             answers_file=answers_file,
         )
+        return result, answers_path
 
 
 def run_experiment(

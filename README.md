@@ -5,6 +5,35 @@
 
 Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics.
 
+## Quickstart
+
+```bash
+# 1. Install
+git clone https://github.com/emfrg/rag-eval-toolkit && cd rag-eval-toolkit
+uv sync --all-extras
+
+# 2. Set API keys
+cp .env.example .env
+# Edit .env with your keys
+
+# 3. Download sample dataset
+uv run rag-eval dataset adapt -s yixuantt/MultiHopRAG -o data/
+
+# 4. Run evaluation (compares reranker vs no reranker)
+uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -C configs/naive.json -e "naive comparison" -n 10
+
+# 5. View results
+mlflow ui  # Open http://127.0.0.1:5000
+```
+
+**All pre-made configs to try:**
+
+| Config | What it compares |
+|--------|------------------|
+| `configs/naive.json` | reranker vs no reranker |
+| `configs/graphrag.json` | hybrid vs local query mode |
+| `configs/naive_vs_graphrag.json` | all 4 configs across architectures |
+
 <!--
 ## Demo
 
@@ -33,20 +62,16 @@ Best by faithfulness: naive_k10 (0.847)
 ## Installation
 
 ```bash
-# With pip
-pip install rag-eval-toolkit
-
-# With uv (recommended)
-uv pip install rag-eval-toolkit
-
-# For GraphRAG support
-pip install rag-eval-toolkit[graphrag]
-
-# Development (from source)
 git clone https://github.com/emfrg/rag-eval-toolkit
 cd rag-eval-toolkit
 uv sync --all-extras
-uv pip install -e .
+
+# Then either activate the venv:
+source .venv/bin/activate
+rag-eval --help
+
+# Or prefix commands with uv run:
+uv run rag-eval --help
 ```
 
 ---
@@ -59,24 +84,24 @@ uv pip install -e .
 
 ```bash
 # Generate questions from your corpus using LLM
-rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50
+uv run rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50
 
 # Generate a mix of factoid and multi-hop questions
-rag-eval dataset build -c corpus.jsonl -o questions.jsonl -t factoid -t multi_hop -n 100
+uv run rag-eval dataset build -c corpus.jsonl -o questions.jsonl -t factoid -t multi_hop -n 100
 ```
 
 **Option B: Use an existing dataset (HuggingFace)**
 
 ```bash
 # Download and convert MultiHopRAG dataset
-rag-eval dataset adapt -s yixuantt/MultiHopRAG -o ./data/
+uv run rag-eval dataset adapt -s yixuantt/MultiHopRAG -o ./data/
 
 # This creates:
 #   ./data/corpus.jsonl
 #   ./data/questions.jsonl
 ```
 
-**Option C: Convert your own format**
+**Option C: Adapt to your own own format**
 
 ```python
 from rag_eval.dataset import adapt_structure
@@ -103,8 +128,8 @@ corpus, eval_dataset = adapt_structure(
     evidence_field="sources",
 )
 
-corpus.to_jsonl("corpus.jsonl")
-eval_dataset.to_jsonl("questions.jsonl")
+corpus.to_jsonl("data/corpus.jsonl")
+eval_dataset.to_jsonl("data/questions.jsonl")
 ```
 
 ### 2. Run an Evaluation
@@ -112,14 +137,44 @@ eval_dataset.to_jsonl("questions.jsonl")
 **CLI:**
 
 ```bash
-# Evaluate with Naive RAG
-rag-eval run -c corpus.jsonl -d questions.jsonl -s naive -o ./results/
+# Run naive configs
+uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json
 
-# Evaluate with GraphRAG
-rag-eval run -c corpus.jsonl -d questions.jsonl -s graphrag -o ./results/
+# Run graphrag configs
+uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/graphrag.json
+
+# Run all configs (cross-architecture comparison)
+uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive_vs_graphrag.json
 
 # Quick test on 10 questions
-rag-eval run -c corpus.jsonl -d questions.jsonl -s naive -n 10
+uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json -n 10
+
+# Force fresh start (ignore checkpoint from interrupted run)
+uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json --recreate
+```
+
+**Config files (each contains an array of named configs):**
+- `configs/naive.json` - Naive RAG configs: `naive_default`, `naive_reranker`
+- `configs/graphrag.json` - GraphRAG configs: `graphrag_hybrid`, `graphrag_local`
+- `configs/naive_vs_graphrag.json` - All 4 configs for cross-architecture comparison
+
+Each config has a `name` field that becomes the MLflow run name.
+
+**Defaults:** `batch_size=40`, `max_workers=15`. Runs auto-resume from checkpoint if interrupted.
+
+**Experiment Tracking (MLflow):**
+
+```bash
+# Start MLflow UI (in separate terminal)
+mlflow ui
+
+# Run experiment - automatically logged to MLflow
+uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -s naive
+
+# View results at http://localhost:5000
+
+# Disable tracking for a run
+uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -s naive --no-tracking
 ```
 
 **Python:**
@@ -130,18 +185,19 @@ from rag_eval.systems.config import NaiveRAGConfig
 from rag_eval.evaluator import run_experiment
 
 # Load data
-corpus = Corpus.from_jsonl("corpus.jsonl")
-eval_dataset = EvalDataset.from_jsonl("questions.jsonl")
+corpus = Corpus.from_jsonl("data/corpus.jsonl")
+eval_dataset = EvalDataset.from_jsonl("data/questions.jsonl")
 
 # Define config
 config = RAGConfig(
+    name="naive_reranker",  # Used for MLflow run name
     rag_type="naive",
-    llm_provider="anthropic",
-    llm_model="claude-sonnet-4-20250514",
+    llm_provider="openai",
+    llm_model="gpt-4o-mini",
     naive=NaiveRAGConfig(
         k_retrieve=10,
         use_reranker=True,
-        max_docs=4,
+        max_docs=10,
     ),
 )
 
@@ -289,7 +345,7 @@ When you have documents but no evaluation questions:
 ```python
 from rag_eval.dataset import Corpus, generate_eval_dataset
 
-corpus = Corpus.from_jsonl("corpus.jsonl")
+corpus = Corpus.from_jsonl("data/corpus.jsonl")
 
 eval_dataset = generate_eval_dataset(
     corpus,
@@ -300,7 +356,7 @@ eval_dataset = generate_eval_dataset(
     seed=42,                     # Reproducibility
 )
 
-eval_dataset.to_jsonl("questions.jsonl")
+eval_dataset.to_jsonl("data/questions.jsonl")
 ```
 
 **Question types:**
@@ -314,8 +370,8 @@ Not all generated questions are good. Score them by quality:
 ```python
 from rag_eval.dataset import score_eval_dataset, Corpus, EvalDataset
 
-corpus = Corpus.from_jsonl("corpus.jsonl")
-eval_dataset = EvalDataset.from_jsonl("questions.jsonl")
+corpus = Corpus.from_jsonl("data/corpus.jsonl")
+eval_dataset = EvalDataset.from_jsonl("data/questions.jsonl")
 
 # Score and filter
 filtered, scores = score_eval_dataset(
@@ -329,7 +385,7 @@ filtered, scores = score_eval_dataset(
 )
 
 print(f"Kept {len(filtered)}/{len(eval_dataset)} questions")
-filtered.to_jsonl("filtered_questions.jsonl")
+filtered.to_jsonl("data/filtered_questions.jsonl")
 ```
 
 #### Adapt HuggingFace Datasets
@@ -389,7 +445,7 @@ NaiveRAGConfig(
 
     # Final output
     min_docs=0,               # Minimum docs to return
-    max_docs=4,               # Maximum docs to use for generation
+    max_docs=10,              # Maximum docs to use for generation
 
     # Storage
     cache_dir="./rag_cache",  # Where to store index
@@ -422,13 +478,13 @@ GraphRAGConfig(
         force_reindex=False,
     ),
     query=GraphRAGQueryConfig(
-        mode="hybrid",        # "semantic", "graph", or "hybrid"
+        mode="hybrid",        # "naive", "local", "global", or "hybrid"
         top_k=50,
     ),
 )
 ```
 
-**Requires:** `pip install rag-eval-toolkit[graphrag]`
+**Requires:** `uv sync --all-extras` (already included if you followed installation)
 
 #### Implementing Custom RAG
 
@@ -568,10 +624,11 @@ results/
       "config_sig": "abc123def4",
       "config": {
         "rag_type": "naive",
-        "llm_model": "claude-sonnet-4-20250514",
+        "llm_model": "gpt-4o-mini",
         "naive": {
           "k_retrieve": 10,
-          "use_reranker": true
+          "use_reranker": true,
+          "max_docs": 10
         }
       },
       "scores": {
@@ -590,22 +647,19 @@ results/
 
 ```bash
 # Dataset commands
-rag-eval dataset info <file.jsonl>              # Show dataset statistics
-rag-eval dataset sample <file.jsonl> -n 10 -o sample.jsonl  # Create sample
-rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50  # Generate Qs
-rag-eval dataset adapt -s huggingface/name -o ./data/  # Adapt HF dataset
-rag-eval dataset score -d questions.jsonl -c corpus.jsonl -o filtered.jsonl  # Score & filter
+uv run rag-eval dataset info <file.jsonl>              # Show dataset statistics
+uv run rag-eval dataset sample <file.jsonl> -n 10 -o sample.jsonl  # Create sample
+uv run rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50  # Generate Qs
+uv run rag-eval dataset adapt -s huggingface/name -o ./data/  # Adapt HF dataset
+uv run rag-eval dataset score -d questions.jsonl -c corpus.jsonl -o filtered.jsonl  # Score & filter
 
 # Run experiments
-rag-eval run \
-  --corpus corpus.jsonl \
-  --dataset questions.jsonl \
-  --system naive \           # or graphrag
+uv run rag-eval run \
+  --corpus data/corpus.jsonl \
+  --dataset data/questions.jsonl \
+  --configs configs/naive.json \
   --output ./results/ \
   --sample 10                # optional: only run on N questions
-
-# Index management
-rag-eval index build --corpus corpus.jsonl --system naive --output ./index/
 ```
 
 ### Configuration Reference
@@ -614,9 +668,10 @@ rag-eval index build --corpus corpus.jsonl --system naive --output ./index/
 
 ```python
 RAGConfig(
+    name="my_config",           # Optional: used for MLflow run name
     rag_type="naive",           # "naive" | "graphrag" | "custom"
-    llm_provider="anthropic",   # "anthropic" | "openai"
-    llm_model="claude-sonnet-4-20250514",  # Model for generation
+    llm_provider="openai",      # "anthropic" | "openai"
+    llm_model="gpt-4o-mini",    # Model for generation
     temperature=1.0,            # Sampling temperature
     max_tokens=512,             # Max response length
     naive=NaiveRAGConfig(...),  # Config if rag_type="naive"
@@ -624,21 +679,23 @@ RAGConfig(
 )
 ```
 
+**Note:** For fair comparisons, all pre-made configs use `openai/gpt-4o-mini`. GraphRAG requires OpenAI for its internal LLM (knowledge graph construction).
+
 #### LLM Providers
 
-**Anthropic (default):**
-```python
-RAGConfig(
-    llm_provider="anthropic",
-    llm_model="claude-sonnet-4-20250514",  # or claude-3-5-haiku, etc.
-)
-```
-
-**OpenAI:**
+**OpenAI (recommended for fair comparison):**
 ```python
 RAGConfig(
     llm_provider="openai",
     llm_model="gpt-4o-mini",  # or gpt-4o, gpt-4-turbo, etc.
+)
+```
+
+**Anthropic:**
+```python
+RAGConfig(
+    llm_provider="anthropic",
+    llm_model="claude-sonnet-4-20250514",  # or claude-3-5-haiku, etc.
 )
 ```
 
@@ -686,7 +743,6 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 │       ├── console.py        # Rich console output
 │       └── json_export.py    # JSON export utilities
 │
-├── examples/                 # Example scripts
 ├── tests/                    # Test suite
 ├── pyproject.toml
 └── README.md

@@ -1,0 +1,45 @@
+[
+  {
+    "name": "graphrag_local",
+    "rag_type": "graphrag",
+    "llm_provider": "openai",
+    "llm_model": "gpt-4o-mini",
+    "temperature": 1.0,
+    "max_tokens": 512,
+    "graphrag": {
+      "indexing": {
+        "cache_dir": "./graphrag_cache",
+        "max_parallel_insert": 4,
+        "batch_size": 128,
+        "force_reindex": false,
+        "inline_metadata": false
+      },
+      "query": {
+        "mode": "local",
+        "top_k": 50
+      }
+    }
+  },
+  {
+    "name": "graphrag_hybrid",
+    "rag_type": "graphrag",
+    "llm_provider": "openai",
+    "llm_model": "gpt-4o-mini",
+    "temperature": 1.0,
+    "max_tokens": 512,
+    "graphrag": {
+      "indexing": {
+        "cache_dir": "./graphrag_cache",
+        "max_parallel_insert": 4,
+        "batch_size": 128,
+        "force_reindex": false,
+        "inline_metadata": false
+      },
+      "query": {
+        "mode": "hybrid",
+        "top_k": 50
+      }
+    }
+  }
+  
+]

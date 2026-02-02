@@ -39,6 +39,7 @@ dependencies = [
     "pandas>=2.0.0",
     "python-dotenv>=1.0.0",
     "tqdm>=4.65.0",
+    "nest-asyncio>=1.6.0",
 ]
 
 [project.optional-dependencies]
@@ -50,6 +51,9 @@ dev = [
 ]
 graphrag = [
     "lightrag-hku>=0.1.0",
+]
+tracking = [
+    "mlflow>=2.0.0",
 ]
 
 [project.scripts]

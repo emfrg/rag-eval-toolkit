@@ -1,0 +1,34 @@
+[
+  {
+    "name": "naive_default",
+    "rag_type": "naive",
+    "llm_provider": "openai",
+    "llm_model": "gpt-4o-mini",
+    "temperature": 1.0,
+    "max_tokens": 512,
+    "naive": {
+      "chunk_documents": false,
+      "embedding_model": "text-embedding-3-small",
+      "k_retrieve": 10,
+      "use_reranker": false,
+      "max_docs": 10
+    }
+  },
+  {
+    "name": "naive_reranker",
+    "rag_type": "naive",
+    "llm_provider": "openai",
+    "llm_model": "gpt-4o-mini",
+    "temperature": 1.0,
+    "max_tokens": 512,
+    "naive": {
+      "chunk_documents": false,
+      "embedding_model": "text-embedding-3-small",
+      "k_retrieve": 10,
+      "use_reranker": true,
+      "reranker_model": "BAAI/bge-reranker-base",
+      "rerank_threshold": 0.5,
+      "max_docs": 10
+    }
+  }
+]
