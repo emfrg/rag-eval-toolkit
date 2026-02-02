@@ -28,8 +28,12 @@ cp .env.example .env
 # 3. Download sample dataset
 uv run rag-eval dataset adapt -s yixuantt/MultiHopRAG -o data/
 
-# 4. Run evaluation on snippet (compares reranker vs no reranker)
+# 4. Run evaluation (compares reranker vs no reranker)
 uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -C configs/naive.json -e "naive comparison" -n 20
+
+# -n 20 = sample 20 questions for quick testing (omit for full dataset)
+
+# Resumes automatically if interrupted. Use --recreate to start fresh.
 
 # 5. View results
 uv run mlflow ui  # Open http://127.0.0.1:5000
