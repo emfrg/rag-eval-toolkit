@@ -5,12 +5,20 @@
 
 Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics.
 
-## Quickstart
+## Quick Start
 
 ```bash
 # 1. Install
-git clone https://github.com/emfrg/rag-eval-toolkit && cd rag-eval-toolkit
+git clone https://github.com/emfrg/rag-eval-toolkit
+cd rag-eval-toolkit
 uv sync --all-extras
+
+# Then either activate the venv:
+source .venv/bin/activate
+rag-eval --help
+
+# Or prefix commands with uv run:
+uv run rag-eval --help
 
 # 2. Set API keys
 cp .env.example .env
@@ -26,7 +34,7 @@ uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -C configs/naiv
 mlflow ui  # Open http://127.0.0.1:5000
 ```
 
-**All pre-made configs to try:**
+**Other pre-made configs to try:**
 
 | Config | What it compares |
 |--------|------------------|
@@ -59,28 +67,9 @@ Best by faithfulness: naive_k10 (0.847)
 ```
 -->
 
-## Installation
+## Using Your Own Data
 
-```bash
-git clone https://github.com/emfrg/rag-eval-toolkit
-cd rag-eval-toolkit
-uv sync --all-extras
-
-# Then either activate the venv:
-source .venv/bin/activate
-rag-eval --help
-
-# Or prefix commands with uv run:
-uv run rag-eval --help
-```
-
----
-
-## Quick Start
-
-### 1. Prepare Your Data
-
-**Option A: You have documents but no eval questions**
+### Generate Questions from Your Corpus
 
 ```bash
 # Generate questions from your corpus using LLM
@@ -90,18 +79,7 @@ uv run rag-eval dataset build -c corpus.jsonl -o questions.jsonl -n 50
 uv run rag-eval dataset build -c corpus.jsonl -o questions.jsonl -t factoid -t multi_hop -n 100
 ```
 
-**Option B: Use an existing dataset (HuggingFace)**
-
-```bash
-# Download and convert MultiHopRAG dataset
-uv run rag-eval dataset adapt -s yixuantt/MultiHopRAG -o ./data/
-
-# This creates:
-#   ./data/corpus.jsonl
-#   ./data/questions.jsonl
-```
-
-**Option C: Adapt to your own own format**
+### Adapt Your Data Format
 
 ```python
 from rag_eval.dataset import adapt_structure
@@ -132,122 +110,46 @@ corpus.to_jsonl("data/corpus.jsonl")
 eval_dataset.to_jsonl("data/questions.jsonl")
 ```
 
-### 2. Run an Evaluation
-
-**CLI:**
-
-```bash
-# Run naive configs
-uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json
-
-# Run graphrag configs
-uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/graphrag.json
-
-# Run all configs (cross-architecture comparison)
-uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive_vs_graphrag.json
-
-# Quick test on 10 questions
-uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json -n 10
-
-# Force fresh start (ignore checkpoint from interrupted run)
-uv run rag-eval run --corpus data/corpus.jsonl --dataset data/questions.jsonl --configs configs/naive.json --recreate
-```
-
-**Config files (each contains an array of named configs):**
-- `configs/naive.json` - Naive RAG configs: `naive_default`, `naive_reranker`
-- `configs/graphrag.json` - GraphRAG configs: `graphrag_hybrid`, `graphrag_local`
-- `configs/naive_vs_graphrag.json` - All 4 configs for cross-architecture comparison
-
-Each config has a `name` field that becomes the MLflow run name.
-
-**Defaults:** `batch_size=40`, `max_workers=15`. Runs auto-resume from checkpoint if interrupted.
-
-**Experiment Tracking (MLflow):**
-
-```bash
-# Start MLflow UI (in separate terminal)
-mlflow ui
-
-# Run experiment - automatically logged to MLflow
-uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -s naive
-
-# View results at http://localhost:5000
-
-# Disable tracking for a run
-uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -s naive --no-tracking
-```
-
-**Python:**
+### Python API
 
 ```python
 from rag_eval import Corpus, EvalDataset, RAGConfig
-from rag_eval.systems.config import NaiveRAGConfig
+from rag_eval.systems.config import NaiveRAGConfig, GraphRAGConfig
 from rag_eval.evaluator import run_experiment
 
 # Load data
 corpus = Corpus.from_jsonl("data/corpus.jsonl")
 eval_dataset = EvalDataset.from_jsonl("data/questions.jsonl")
 
-# Define config
-config = RAGConfig(
-    name="naive_reranker",  # Used for MLflow run name
-    rag_type="naive",
-    llm_provider="openai",
-    llm_model="gpt-4o-mini",
-    naive=NaiveRAGConfig(
-        k_retrieve=10,
-        use_reranker=True,
-        max_docs=10,
+# Define configs to compare
+configs = [
+    RAGConfig(
+        name="naive_reranker",
+        rag_type="naive",
+        llm_provider="openai",
+        llm_model="gpt-4o-mini",
+        naive=NaiveRAGConfig(k_retrieve=10, use_reranker=True, max_docs=10),
     ),
-)
+    RAGConfig(
+        name="graphrag_hybrid",
+        rag_type="graphrag",
+        llm_provider="openai",
+        llm_model="gpt-4o-mini",
+    ),
+]
 
 # Run
-summary = run_experiment([config], corpus, eval_dataset, output_dir="./results")
+summary = run_experiment(configs, corpus, eval_dataset, output_dir="./results")
 
 # View results
 print(summary.results[0].scores)
 # {'faithfulness': 0.847, 'context_recall': 0.723, 'factual_correctness': 0.651, ...}
-```
 
-### 3. Compare Configurations
-
-The power of the toolkit: systematically compare different setups.
-
-```python
-from rag_eval import RAGConfig
-from rag_eval.systems.config import NaiveRAGConfig, GraphRAGConfig
-from rag_eval.evaluator import run_experiment
-
-configs = [
-    # Baseline: simple retrieval
-    RAGConfig(
-        rag_type="naive",
-        naive=NaiveRAGConfig(k_retrieve=5, use_reranker=False),
-    ),
-    # More retrieval
-    RAGConfig(
-        rag_type="naive",
-        naive=NaiveRAGConfig(k_retrieve=20, use_reranker=False),
-    ),
-    # With reranker
-    RAGConfig(
-        rag_type="naive",
-        naive=NaiveRAGConfig(k_retrieve=20, use_reranker=True, max_docs=5),
-    ),
-    # GraphRAG
-    RAGConfig(rag_type="graphrag"),
-]
-
-summary = run_experiment(configs, corpus, eval_dataset)
-
-# Find best
+# Find best config
 best = summary.find_best("faithfulness")
-print(f"Best config: {best.config_sig}")
-print(f"Faithfulness: {best.scores['faithfulness']:.3f}")
+print(f"Best: {best.config_sig} ({best.scores['faithfulness']:.3f})")
 
-# Compare all
 summary.print_comparison()  # Rich table output
-df = summary.to_dataframe()  # Pandas DataFrame
 ```
 
 ---
