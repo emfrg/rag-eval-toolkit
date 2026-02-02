@@ -2,8 +2,9 @@
 
 [![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![RAGAS](https://img.shields.io/badge/metrics-RAGAS-brightgreen)](https://github.com/explodinggradients/ragas)
+[![MLflow](https://img.shields.io/badge/tracking-MLflow-0194E2)](https://github.com/mlflow/mlflow)
 
-Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics.
+Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics. Experiment tracking with MLflow.
 
 ## Quick Start
 
@@ -27,11 +28,11 @@ cp .env.example .env
 # 3. Download sample dataset
 uv run rag-eval dataset adapt -s yixuantt/MultiHopRAG -o data/
 
-# 4. Run evaluation (compares reranker vs no reranker)
-uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -C configs/naive.json -e "naive comparison" -n 10
+# 4. Run evaluation on snippet (compares reranker vs no reranker)
+uv run rag-eval run -c data/corpus.jsonl -d data/questions.jsonl -C configs/naive.json -e "naive comparison" -n 20
 
 # 5. View results
-mlflow ui  # Open http://127.0.0.1:5000
+uv run mlflow ui  # Open http://127.0.0.1:5000
 ```
 
 **Other pre-made configs to try:**
@@ -41,6 +42,8 @@ mlflow ui  # Open http://127.0.0.1:5000
 | `configs/naive.json` | reranker vs no reranker |
 | `configs/graphrag.json` | hybrid vs local query mode |
 | `configs/naive_vs_graphrag.json` | all 4 configs across architectures |
+
+---
 
 <!--
 ## Demo
@@ -66,6 +69,8 @@ $ rag-eval run -c corpus.jsonl -d questions.jsonl -s naive -s graphrag
 Best by faithfulness: naive_k10 (0.847)
 ```
 -->
+
+---
 
 ## Using Your Own Data
 
@@ -199,6 +204,8 @@ I kept hearing that GraphRAG outperforms traditional retrieval for multi-hop que
 
 The hype didn't hold up under controlled evaluation. This doesn't mean GraphRAG is useless — but it shows that architecture choice depends on your specific data and use case.
 -->
+
+
 
 ## Technical Reference
 
@@ -347,7 +354,7 @@ NaiveRAGConfig(
 
     # Final output
     min_docs=0,               # Minimum docs to return
-    max_docs=10,              # Maximum docs to use for generation
+    max_docs=4,               # Maximum docs to use for generation
 
     # Storage
     cache_dir="./rag_cache",  # Where to store index
@@ -380,7 +387,7 @@ GraphRAGConfig(
         force_reindex=False,
     ),
     query=GraphRAGQueryConfig(
-        mode="hybrid",        # "naive", "local", "global", or "hybrid"
+        mode="hybrid",        # "semantic", "graph", or "hybrid"
         top_k=50,
     ),
 )
@@ -639,7 +646,8 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 │   ├── evaluator/            # Module 3: Evaluator
 │   │   ├── runner.py         # ExperimentRunner, run_experiment()
 │   │   ├── metrics.py        # RAGEvaluator (RAGAS integration)
-│   │   └── results.py        # ExperimentResult, ExperimentSummary
+│   │   ├── results.py        # ExperimentResult, ExperimentSummary
+│   │   └── tracking.py       # MLflow experiment tracking
 │   │
 │   └── reporting/            # Output formatting
 │       ├── console.py        # Rich console output
