@@ -14,6 +14,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
+
 from typing import TYPE_CHECKING, Any
 
 from langchain_core.prompts import ChatPromptTemplate
@@ -207,8 +208,8 @@ class GraphRAGSystem(RAGSystemBase):
         self._rag: LightRAG | None = None
         self._workdir: Path | None = None
 
-        # Event loop for async operations
-        self._loop: asyncio.AbstractEventLoop | None = None
+        # Dedicated event loop for all async operations (LightRAG binds queues to loop)
+        self._loop = asyncio.new_event_loop()
 
         # LLM for generation (Anthropic by default, separate from LightRAG's internal LLM)
         # Note: LightRAG's internal LLM for KG construction still uses OpenAI
@@ -235,17 +236,32 @@ class GraphRAGSystem(RAGSystemBase):
         suffix = "meta" if self._cfg.indexing.inline_metadata else "base"
         return f"{corpus_name}_{suffix}"
 
-    def _ensure_loop(self) -> asyncio.AbstractEventLoop:
-        """Get or create an event loop for async operations."""
-        if self._loop is None or self._loop.is_closed():
-            self._loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(self._loop)
-        return self._loop
-
     def _run_async(self, coro):
-        """Run an async coroutine synchronously."""
-        loop = self._ensure_loop()
-        return loop.run_until_complete(coro)
+        """Run an async coroutine in the dedicated event loop."""
+        return self._loop.run_until_complete(coro)
+
+    def close(self) -> None:
+        """Clean up resources, cancelling pending async tasks."""
+        if self._loop is None:
+            return
+
+        # Cancel all pending tasks
+        pending = asyncio.all_tasks(self._loop)
+        for task in pending:
+            task.cancel()
+
+        # Let cancellations propagate
+        if pending:
+            self._loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+
+        self._loop.close()
+        self._loop = None
+
+    def __del__(self) -> None:
+        """Ensure cleanup on garbage collection."""
+        self.close()
 
     async def _initialize_lightrag(self, workdir: Path, workspace: str) -> LightRAG:
         """Initialize a LightRAG instance.
@@ -330,16 +346,14 @@ class GraphRAGSystem(RAGSystemBase):
         workspace_dir = cfg.cache_dir / workspace
         self._workdir = workspace_dir
 
-        # Check if we need to build a new index
+        # Check if workspace has existing data
         workspace_has_files = workspace_dir.exists() and any(workspace_dir.iterdir())
-        needs_index = cfg.force_reindex or not workspace_has_files
 
         # Force reindex: remove existing workspace
         if cfg.force_reindex and workspace_dir.exists():
             logger.info(f"Force reindex: removing {workspace_dir}")
             shutil.rmtree(workspace_dir)
             workspace_has_files = False
-            needs_index = True
 
         # Ensure directories exist
         cfg.cache_dir.mkdir(parents=True, exist_ok=True)
@@ -364,21 +378,22 @@ class GraphRAGSystem(RAGSystemBase):
             self._initialize_lightrag(cfg.cache_dir, workspace)
         )
 
-        # Insert documents if needed
-        ingested = 0
-        if needs_index:
-            logger.info(f"Indexing {total_docs} documents...")
-            ingested = self._run_async(
-                self._insert_documents(self._rag, records, cfg.batch_size)
-            )
-        else:
-            logger.info("Reusing existing index")
+        # Insert documents (LightRAG skips already-indexed via doc_status)
+        logger.info(f"Indexing {total_docs} documents (skipping already-indexed)...")
+        ingested = self._run_async(
+            self._insert_documents(self._rag, records, cfg.batch_size)
+        )
+
+        # Check if we actually indexed anything new
+        reused_existing = (ingested == 0) and workspace_has_files
+        if reused_existing:
+            logger.info("All documents already indexed - reusing existing index")
 
         self._index_loaded = True
         return IndexReport(
             total_documents=total_docs,
             indexed_documents=ingested,
-            reused_existing=not needs_index,
+            reused_existing=reused_existing,
             index_path=str(workspace_dir),
         )
 
@@ -424,6 +439,7 @@ class GraphRAGSystem(RAGSystemBase):
             mode=self._cfg.query.mode,
             top_k=self._cfg.query.top_k,
             only_need_context=True,
+            enable_rerank=False,  # We don't have a rerank model configured
         )
 
         result = await self._rag.aquery(question, param=param)

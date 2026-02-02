@@ -2,6 +2,8 @@
 rag_cache/
 graphrag_cache/
 data/
+mlruns/
+mlflow.db
 datasets_local/
 output/
 results/

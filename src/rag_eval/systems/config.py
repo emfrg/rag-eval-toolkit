@@ -108,6 +108,35 @@ class GraphRAGConfig:
 
 
 @dataclass
+class EvalConfig:
+    """Configuration for evaluation settings.
+
+    ALL DEFAULTS LIVE HERE - this is the single source of truth.
+    No defaults should be hardcoded in metrics.py, runner.py, or cli.py.
+
+    Attributes:
+        batch_size: Number of questions to process per batch (RAG querying).
+        max_workers: Maximum concurrent workers for RAG querying.
+        checkpoint_interval: Save checkpoint every N questions.
+        ragas_batch_size: Number of samples per RAGAS evaluation batch.
+        ragas_max_workers: Max concurrent API calls for RAGAS evaluation.
+        ragas_timeout: Timeout in seconds for RAGAS API calls.
+        ragas_max_retries: Max retries for failed RAGAS API calls.
+    """
+
+    # RAG querying parallelization
+    batch_size: int = 40
+    max_workers: int = 15
+    checkpoint_interval: int = 40
+
+    # RAGAS evaluation parallelization
+    ragas_batch_size: int = 10  # Evaluate in batches for checkpointing
+    ragas_max_workers: int = 10
+    ragas_timeout: int = 180
+    ragas_max_retries: int = 10
+
+
+@dataclass
 class RAGConfig:
     """Main configuration for RAG systems.
 
@@ -115,6 +144,7 @@ class RAGConfig:
     temperature, etc.) and architecture-specific configs.
 
     Attributes:
+        name: Optional name for this config (used for MLflow run naming).
         rag_type: Which RAG architecture to use.
         llm_provider: LLM provider - "anthropic" or "openai".
         llm_model: Name of the LLM model for generation.
@@ -127,6 +157,7 @@ class RAGConfig:
         ```python
         # Using Anthropic Claude (default)
         config = RAGConfig(
+            name="naive_default",
             rag_type="naive",
             llm_provider="anthropic",
             llm_model="claude-sonnet-4-20250514",
@@ -138,6 +169,7 @@ class RAGConfig:
 
         # Using OpenAI
         config = RAGConfig(
+            name="naive_openai",
             rag_type="naive",
             llm_provider="openai",
             llm_model="gpt-4o-mini",
@@ -145,6 +177,7 @@ class RAGConfig:
         ```
     """
 
+    name: str | None = None
     rag_type: Literal["naive", "graphrag", "custom"] = "naive"
     llm_provider: Literal["anthropic", "openai"] = "anthropic"
     llm_model: str = "claude-sonnet-4-20250514"
@@ -152,6 +185,7 @@ class RAGConfig:
     max_tokens: int = 512
     naive: NaiveRAGConfig = field(default_factory=NaiveRAGConfig)
     graphrag: GraphRAGConfig = field(default_factory=GraphRAGConfig)
+    eval: EvalConfig = field(default_factory=EvalConfig)
 
     def __post_init__(self) -> None:
         # Handle dict initialization for nested configs
@@ -159,10 +193,19 @@ class RAGConfig:
             self.naive = NaiveRAGConfig(**self.naive)
         if isinstance(self.graphrag, dict):
             self.graphrag = GraphRAGConfig(**self.graphrag)
+        if isinstance(self.eval, dict):
+            self.eval = EvalConfig(**self.eval)
+
+        # GraphRAG (LightRAG) only supports OpenAI - auto-set if using defaults
+        if self.rag_type == "graphrag":
+            if self.llm_provider == "anthropic":
+                self.llm_provider = "openai"
+            if self.llm_model == "claude-sonnet-4-20250514":
+                self.llm_model = "gpt-4o-mini"
 
     def to_dict(self) -> dict:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "rag_type": self.rag_type,
             "llm_provider": self.llm_provider,
             "llm_model": self.llm_model,
@@ -197,7 +240,19 @@ class RAGConfig:
                     "top_k": self.graphrag.query.top_k,
                 },
             },
+            "eval": {
+                "batch_size": self.eval.batch_size,
+                "max_workers": self.eval.max_workers,
+                "checkpoint_interval": self.eval.checkpoint_interval,
+                "ragas_batch_size": self.eval.ragas_batch_size,
+                "ragas_max_workers": self.eval.ragas_max_workers,
+                "ragas_timeout": self.eval.ragas_timeout,
+                "ragas_max_retries": self.eval.ragas_max_retries,
+            },
         }
+        if self.name:
+            result["name"] = self.name
+        return result
 
     @classmethod
     def from_dict(cls, data: dict) -> RAGConfig:

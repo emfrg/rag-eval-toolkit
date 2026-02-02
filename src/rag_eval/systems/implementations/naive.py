@@ -250,6 +250,11 @@ class NaiveRAGSystem(RAGSystemBase):
                 allow_dangerous_deserialization=True,
             )
             self._index_loaded = True
+
+            # Pre-load reranker to avoid race condition in parallel queries
+            if self._cfg.use_reranker:
+                self._get_reranker()
+
             return IndexReport(
                 total_documents=len(corpus),
                 indexed_documents=0,
@@ -301,6 +306,11 @@ class NaiveRAGSystem(RAGSystemBase):
         logger.info(f"Saved index to {self._index_path}")
 
         self._index_loaded = True
+
+        # Pre-load reranker to avoid race condition in parallel queries
+        if self._cfg.use_reranker:
+            self._get_reranker()
+
         return IndexReport(
             total_documents=len(corpus),
             indexed_documents=len(documents),
@@ -333,6 +343,10 @@ class NaiveRAGSystem(RAGSystemBase):
             allow_dangerous_deserialization=True,
         )
         self._index_loaded = True
+
+        # Pre-load reranker to avoid race condition in parallel queries
+        if self._cfg.use_reranker:
+            self._get_reranker()
 
     def retrieve(self, query: str) -> list[RetrievedDocument]:
         """Retrieve relevant documents for a query.
