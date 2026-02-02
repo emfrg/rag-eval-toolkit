@@ -6,6 +6,9 @@
 
 Benchmark any RAG architecture. Optimize configurations, compare approaches, and evaluate on any dataset with standardized RAGAS metrics. Experiment tracking with MLflow.
 
+
+![Experiment Run](exp_snippet.png)
+
 ## Quick Start
 
 ```bash
@@ -400,13 +403,6 @@ GraphRAGConfig(
 ```
 
 **Requires:** `uv sync --all-extras` (already included if you followed installation)
-
-> **⚠️ Performance Warning:** GraphRAG is significantly slower and more expensive than Naive RAG.
-> - **Indexing**: LightRAG makes LLM API calls (GPT-4o-mini) for entity/relationship extraction on EVERY document. A 1000-doc corpus = 2000+ API calls.
-> - **Querying**: Each query requires additional LLM calls for entity extraction. Queries run sequentially (no parallelization).
-> - **Cost**: Expect $5-20+ for indexing a medium corpus, plus per-query costs.
->
-> For quick iteration, use Naive RAG. Use GraphRAG only when you specifically need knowledge graph capabilities.
 
 #### Implementing Custom RAG
 
