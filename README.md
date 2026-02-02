@@ -74,7 +74,7 @@ Best by faithfulness: naive_k10 (0.847)
 ```
 -->
 
----
+
 
 ## Using Your Own Data
 
@@ -627,6 +627,11 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 ## Project Structure
 
 ```
+├── configs/                  # Pre-made experiment configs
+│   ├── naive.json            # Reranker vs no reranker
+│   ├── graphrag.json         # Hybrid vs local query mode
+│   └── naive_vs_graphrag.json # Cross-architecture comparison
+│
 ├── src/rag_eval/
 │   ├── __init__.py           # Main exports
 │   ├── cli.py                # CLI entry point (Click)
@@ -658,6 +663,7 @@ OPENAI_API_KEY=sk-...          # For embeddings, GPT models, question generation
 │       └── json_export.py    # JSON export utilities
 │
 ├── tests/                    # Test suite
+├── .env.example              # API keys template
 ├── pyproject.toml
 └── README.md
 ```
