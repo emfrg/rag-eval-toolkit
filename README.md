@@ -47,6 +47,8 @@ uv run mlflow ui  # Open http://127.0.0.1:5000
 | `configs/graphrag.json` | hybrid vs local query mode |
 | `configs/naive_vs_graphrag.json` | all 4 configs across architectures |
 
+> **Note:** Start with `naive.json`. GraphRAG' indexing is much slower and more expensive due to LLM-based knowledge graph construction.
+
 ---
 
 <!--
@@ -398,6 +400,13 @@ GraphRAGConfig(
 ```
 
 **Requires:** `uv sync --all-extras` (already included if you followed installation)
+
+> **⚠️ Performance Warning:** GraphRAG is significantly slower and more expensive than Naive RAG.
+> - **Indexing**: LightRAG makes LLM API calls (GPT-4o-mini) for entity/relationship extraction on EVERY document. A 1000-doc corpus = 2000+ API calls.
+> - **Querying**: Each query requires additional LLM calls for entity extraction. Queries run sequentially (no parallelization).
+> - **Cost**: Expect $5-20+ for indexing a medium corpus, plus per-query costs.
+>
+> For quick iteration, use Naive RAG. Use GraphRAG only when you specifically need knowledge graph capabilities.
 
 #### Implementing Custom RAG
 

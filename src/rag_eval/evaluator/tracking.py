@@ -47,11 +47,29 @@ def _sanitize_metric_name(name: str) -> str:
     return sanitized
 
 
+def _run_exists_in_experiment(experiment_name: str, config_sig: str) -> bool:
+    """Check if a run with this config_sig already exists in the experiment."""
+    if not MLFLOW_AVAILABLE:
+        return False
+
+    experiment = mlflow.get_experiment_by_name(experiment_name)
+    if experiment is None:
+        return False
+
+    runs = mlflow.search_runs(
+        experiment_ids=[experiment.experiment_id],
+        filter_string=f"params.config_sig = '{config_sig}'",
+        max_results=1,
+    )
+    return len(runs) > 0
+
+
 def log_experiment(
     config: RAGConfig,
     result: ExperimentResult,
     answers_path: Path | None = None,
     experiment_name: str = "rag-eval",
+    allow_duplicate: bool = True,
 ) -> str | None:
     """Log an experiment run to MLflow.
 
@@ -60,12 +78,18 @@ def log_experiment(
         result: The experiment result with scores.
         answers_path: Path to the answers JSONL file (logged as artifact).
         experiment_name: Name of the MLflow experiment.
+        allow_duplicate: If False, skip logging if a run with this config_sig exists.
 
     Returns:
         The MLflow run ID if successful, None otherwise.
     """
     if not MLFLOW_AVAILABLE:
         logger.warning("MLflow not installed. Run: uv sync --extra tracking")
+        return None
+
+    # Skip duplicate runs (unless explicitly allowed)
+    if not allow_duplicate and _run_exists_in_experiment(experiment_name, result.config_sig):
+        logger.debug(f"Skipping MLflow log - run with config_sig={result.config_sig} already exists")
         return None
 
     mlflow.set_experiment(experiment_name)

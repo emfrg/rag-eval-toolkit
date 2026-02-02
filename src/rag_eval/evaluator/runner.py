@@ -150,10 +150,27 @@ class ExperimentRunner:
             logger.info(f"Config: {config.rag_type}, sig={config_sig}")
             logger.info(f"{'='*60}")
 
-            # Skip if this config was already run (unless recreate=True)
+            # Skip if this config was already run with enough samples (unless recreate=True)
             if config_sig in existing_sigs and not recreate:
-                logger.info(f"Skipping {config_sig} - already in summary (use --recreate to re-run)")
-                continue
+                existing_result = next(r for r in summary.results if r.config_sig == config_sig)
+                requested_samples = len(eval_dataset)
+
+                # Re-run if we need more samples than previously evaluated
+                if existing_result.num_samples < requested_samples:
+                    logger.info(
+                        f"Expanding {config_sig}: {existing_result.num_samples} → {requested_samples} samples "
+                        f"(index cached, only new questions evaluated)"
+                    )
+                    # Don't skip - fall through to run_single_experiment which uses checkpoints
+                else:
+                    logger.info(f"Skipping {config_sig} - already in summary (use --recreate to re-run)")
+                    # Log to MLflow so the current experiment view is complete (but skip if already logged)
+                    if tracking and is_tracking_available():
+                        answers_path = None
+                        if existing_result.answers_file:
+                            answers_path = self.output_dir / "answers" / existing_result.answers_file
+                        log_experiment(config, existing_result, answers_path, experiment_name, allow_duplicate=False)
+                    continue
 
             try:
                 result, answers_path = self.run_single_experiment(
