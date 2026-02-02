@@ -131,7 +131,7 @@ class EvalConfig:
 
     # RAGAS evaluation parallelization
     ragas_batch_size: int = 10  # Evaluate in batches for checkpointing
-    ragas_max_workers: int = 16
+    ragas_max_workers: int = 10
     ragas_timeout: int = 180
     ragas_max_retries: int = 10
 

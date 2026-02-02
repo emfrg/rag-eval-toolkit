@@ -257,6 +257,10 @@ class ExperimentRunner:
         eval_result.save_answers(answers_path)
         logger.info(f"Saved answers to {answers_path}")
 
+        # Clean up RAG system resources
+        if hasattr(rag_system, "close"):
+            rag_system.close()
+
         result = ExperimentResult(
             config_id=config_id,
             config_sig=config_sig,

@@ -240,6 +240,29 @@ class GraphRAGSystem(RAGSystemBase):
         """Run an async coroutine in the dedicated event loop."""
         return self._loop.run_until_complete(coro)
 
+    def close(self) -> None:
+        """Clean up resources, cancelling pending async tasks."""
+        if self._loop is None:
+            return
+
+        # Cancel all pending tasks
+        pending = asyncio.all_tasks(self._loop)
+        for task in pending:
+            task.cancel()
+
+        # Let cancellations propagate
+        if pending:
+            self._loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+
+        self._loop.close()
+        self._loop = None
+
+    def __del__(self) -> None:
+        """Ensure cleanup on garbage collection."""
+        self.close()
+
     async def _initialize_lightrag(self, workdir: Path, workspace: str) -> LightRAG:
         """Initialize a LightRAG instance.
 
@@ -416,6 +439,7 @@ class GraphRAGSystem(RAGSystemBase):
             mode=self._cfg.query.mode,
             top_k=self._cfg.query.top_k,
             only_need_context=True,
+            enable_rerank=False,  # We don't have a rerank model configured
         )
 
         result = await self._rag.aquery(question, param=param)
